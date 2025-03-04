@@ -1,186 +1,368 @@
-import React, { useState } from 'react';
-import { Card, Form, InputNumber, Switch, Table, Button, message } from 'antd';
+import React from 'react';
+import { Card, Form, InputNumber, Switch, Select, Button, Typography, Space, message } from 'antd';
 import styled from 'styled-components';
+import { useSensorData } from '../contexts/SensorDataContext';
+
+const { Title } = Typography;
+const { Option } = Select;
 
 const StyledCard = styled(Card)`
-  margin-bottom: 24px;
+  margin: 20px;
 `;
 
-interface AlarmThreshold {
-  key: string;
-  parameter: string;
-  min: number;
-  max: number;
-  unit: string;
-  enabled: boolean;
-}
-
-const initialThresholds: AlarmThreshold[] = [
-  {
-    key: '1',
-    parameter: '空气温度',
-    min: 15,
-    max: 30,
-    unit: '°C',
-    enabled: true,
-  },
-  {
-    key: '2',
-    parameter: '空气湿度',
-    min: 40,
-    max: 80,
-    unit: '%',
-    enabled: true,
-  },
-  {
-    key: '3',
-    parameter: 'CO2浓度',
-    min: 350,
-    max: 1000,
-    unit: 'ppm',
-    enabled: true,
-  },
-  {
-    key: '4',
-    parameter: '光照强度',
-    min: 1000,
-    max: 3000,
-    unit: 'lux',
-    enabled: true,
-  },
-  {
-    key: '5',
-    parameter: '土壤温度',
-    min: 10,
-    max: 25,
-    unit: '°C',
-    enabled: true,
-  },
-  {
-    key: '6',
-    parameter: '土壤湿度',
-    min: 60,
-    max: 85,
-    unit: '%',
-    enabled: true,
-  },
-  {
-    key: '7',
-    parameter: '土壤pH值',
-    min: 5.5,
-    max: 7.5,
-    unit: '',
-    enabled: true,
-  },
-  {
-    key: '8',
-    parameter: '电导率(EC)',
-    min: 0.8,
-    max: 1.8,
-    unit: 'mS/cm',
-    enabled: true,
-  },
-];
+const StyledSelect = styled(Select)`
+  .ant-select-selector {
+    height: auto !important;
+    min-height: 32px;
+    padding: 4px 4px !important;
+  }
+  .ant-select-selection-overflow {
+    padding: 4px 0;
+    min-height: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .ant-select-selection-item {
+    margin-top: 2px;
+    margin-bottom: 2px;
+  }
+`;
 
 const AlarmSettings: React.FC = () => {
-  const [thresholds, setThresholds] = useState<AlarmThreshold[]>(initialThresholds);
   const [form] = Form.useForm();
 
-  const columns = [
-    {
-      title: '监测参数',
-      dataIndex: 'parameter',
-      key: 'parameter',
-    },
-    {
-      title: '最小值',
-      dataIndex: 'min',
-      key: 'min',
-      render: (text: number, record: AlarmThreshold) => (
-        <InputNumber
-          min={0}
-          value={text}
-          onChange={(value) => handleThresholdChange(record.key, 'min', value)}
-          disabled={!record.enabled}
-        />
-      ),
-    },
-    {
-      title: '最大值',
-      dataIndex: 'max',
-      key: 'max',
-      render: (text: number, record: AlarmThreshold) => (
-        <InputNumber
-          min={0}
-          value={text}
-          onChange={(value) => handleThresholdChange(record.key, 'max', value)}
-          disabled={!record.enabled}
-        />
-      ),
-    },
-    {
-      title: '单位',
-      dataIndex: 'unit',
-      key: 'unit',
-    },
-    {
-      title: '启用',
-      dataIndex: 'enabled',
-      key: 'enabled',
-      render: (enabled: boolean, record: AlarmThreshold) => (
-        <Switch
-          checked={enabled}
-          onChange={(checked) => handleEnableChange(record.key, checked)}
-        />
-      ),
-    },
-  ];
-
-  const handleThresholdChange = (key: string, field: 'min' | 'max', value: number | null) => {
-    if (value === null) return;
-    
-    const newThresholds = thresholds.map(threshold => {
-      if (threshold.key === key) {
-        return { ...threshold, [field]: value };
-      }
-      return threshold;
-    });
-    setThresholds(newThresholds);
-  };
-
-  const handleEnableChange = (key: string, enabled: boolean) => {
-    const newThresholds = thresholds.map(threshold => {
-      if (threshold.key === key) {
-        return { ...threshold, enabled };
-      }
-      return threshold;
-    });
-    setThresholds(newThresholds);
-  };
-
-  const handleSave = () => {
-    // 这里可以添加保存到后端的逻辑
+  const handleSave = async (values: any) => {
+    console.log('保存报警设置:', values);
+    // TODO: 实现保存逻辑
     message.success('报警设置已保存');
   };
 
   return (
     <div>
-      <h2>报警设置</h2>
       <StyledCard>
-        <Form form={form} layout="vertical">
-          <Table
-            columns={columns}
-            dataSource={thresholds}
-            pagination={false}
-            rowKey="key"
-          />
-          <Button
-            type="primary"
-            onClick={handleSave}
-            style={{ marginTop: 16 }}
+        <Title level={4}>报警阈值设置</Title>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            enabled: true,
+            notificationMethod: ['sound', 'message'],
+            thresholds: {
+              temperature: {
+                enabled: true,
+                min: 15,
+                max: 30,
+                delay: 30
+              },
+              humidity: {
+                enabled: true,
+                min: 40,
+                max: 80,
+                delay: 30
+              },
+              co2: {
+                enabled: true,
+                min: 350,
+                max: 1000,
+                delay: 30
+              },
+              light: {
+                enabled: true,
+                min: 1000,
+                max: 100000,
+                delay: 30
+              },
+              soilMoisture: {
+                enabled: true,
+                min: 20,
+                max: 80,
+                delay: 30
+              },
+              soilPH: {
+                enabled: true,
+                min: 5.5,
+                max: 7.5,
+                delay: 30
+              },
+              ec: {
+                enabled: true,
+                min: 0.8,
+                max: 1.8,
+                delay: 30
+              }
+            }
+          }}
+          onFinish={handleSave}
+        >
+          <Form.Item
+            name="enabled"
+            label="启用报警系统"
+            valuePropName="checked"
           >
-            保存设置
-          </Button>
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            name="notificationMethod"
+            label="报警通知方式"
+            rules={[{ required: true, message: '请选择报警通知方式' }]}
+          >
+            <StyledSelect
+              mode="multiple"
+              placeholder="请选择报警通知方式"
+              style={{ width: '100%' }}
+            >
+              <Option value="sound">声音提醒</Option>
+              <Option value="message">系统消息</Option>
+              <Option value="email">邮件通知</Option>
+              <Option value="sms">短信通知</Option>
+            </StyledSelect>
+          </Form.Item>
+
+          <Title level={5}>空气温度</Title>
+          <Form.Item shouldUpdate noStyle>
+            {() => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Form.Item
+                  name={['thresholds', 'temperature', 'enabled']}
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                </Form.Item>
+                <Space>
+                  <Form.Item
+                    name={['thresholds', 'temperature', 'min']}
+                    label="最小值 (°C)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'temperature', 'max']}
+                    label="最大值 (°C)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'temperature', 'delay']}
+                    label="延迟报警 (秒)"
+                  >
+                    <InputNumber min={0} max={300} />
+                  </Form.Item>
+                </Space>
+              </Space>
+            )}
+          </Form.Item>
+
+          <Title level={5}>空气湿度</Title>
+          <Form.Item shouldUpdate noStyle>
+            {() => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Form.Item
+                  name={['thresholds', 'humidity', 'enabled']}
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                </Form.Item>
+                <Space>
+                  <Form.Item
+                    name={['thresholds', 'humidity', 'min']}
+                    label="最小值 (%)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'humidity', 'max']}
+                    label="最大值 (%)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'humidity', 'delay']}
+                    label="延迟报警 (秒)"
+                  >
+                    <InputNumber min={0} max={300} />
+                  </Form.Item>
+                </Space>
+              </Space>
+            )}
+          </Form.Item>
+
+          <Title level={5}>CO2浓度</Title>
+          <Form.Item shouldUpdate noStyle>
+            {() => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Form.Item
+                  name={['thresholds', 'co2', 'enabled']}
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                </Form.Item>
+                <Space>
+                  <Form.Item
+                    name={['thresholds', 'co2', 'min']}
+                    label="最小值 (ppm)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'co2', 'max']}
+                    label="最大值 (ppm)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'co2', 'delay']}
+                    label="延迟报警 (秒)"
+                  >
+                    <InputNumber min={0} max={300} />
+                  </Form.Item>
+                </Space>
+              </Space>
+            )}
+          </Form.Item>
+
+          <Title level={5}>光照强度</Title>
+          <Form.Item shouldUpdate noStyle>
+            {() => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Form.Item
+                  name={['thresholds', 'light', 'enabled']}
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                </Form.Item>
+                <Space>
+                  <Form.Item
+                    name={['thresholds', 'light', 'min']}
+                    label="最小值 (lux)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'light', 'max']}
+                    label="最大值 (lux)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'light', 'delay']}
+                    label="延迟报警 (秒)"
+                  >
+                    <InputNumber min={0} max={300} />
+                  </Form.Item>
+                </Space>
+              </Space>
+            )}
+          </Form.Item>
+
+          <Title level={5}>土壤湿度</Title>
+          <Form.Item shouldUpdate noStyle>
+            {() => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Form.Item
+                  name={['thresholds', 'soilMoisture', 'enabled']}
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                </Form.Item>
+                <Space>
+                  <Form.Item
+                    name={['thresholds', 'soilMoisture', 'min']}
+                    label="最小值 (%)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'soilMoisture', 'max']}
+                    label="最大值 (%)"
+                  >
+                    <InputNumber />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'soilMoisture', 'delay']}
+                    label="延迟报警 (秒)"
+                  >
+                    <InputNumber min={0} max={300} />
+                  </Form.Item>
+                </Space>
+              </Space>
+            )}
+          </Form.Item>
+
+          <Title level={5}>土壤pH值</Title>
+          <Form.Item shouldUpdate noStyle>
+            {() => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Form.Item
+                  name={['thresholds', 'soilPH', 'enabled']}
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                </Form.Item>
+                <Space>
+                  <Form.Item
+                    name={['thresholds', 'soilPH', 'min']}
+                    label="最小值"
+                  >
+                    <InputNumber step={0.1} />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'soilPH', 'max']}
+                    label="最大值"
+                  >
+                    <InputNumber step={0.1} />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'soilPH', 'delay']}
+                    label="延迟报警 (秒)"
+                  >
+                    <InputNumber min={0} max={300} />
+                  </Form.Item>
+                </Space>
+              </Space>
+            )}
+          </Form.Item>
+
+          <Title level={5}>土壤EC值</Title>
+          <Form.Item shouldUpdate noStyle>
+            {() => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Form.Item
+                  name={['thresholds', 'ec', 'enabled']}
+                  valuePropName="checked"
+                >
+                  <Switch checkedChildren="启用" unCheckedChildren="禁用" />
+                </Form.Item>
+                <Space>
+                  <Form.Item
+                    name={['thresholds', 'ec', 'min']}
+                    label="最小值 (mS/cm)"
+                  >
+                    <InputNumber step={0.1} />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'ec', 'max']}
+                    label="最大值 (mS/cm)"
+                  >
+                    <InputNumber step={0.1} />
+                  </Form.Item>
+                  <Form.Item
+                    name={['thresholds', 'ec', 'delay']}
+                    label="延迟报警 (秒)"
+                  >
+                    <InputNumber min={0} max={300} />
+                  </Form.Item>
+                </Space>
+              </Space>
+            )}
+          </Form.Item>
+
+          <Form.Item>
+            <Button type="primary" htmlType="submit">
+              保存设置
+            </Button>
+          </Form.Item>
         </Form>
       </StyledCard>
     </div>

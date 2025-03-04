@@ -1,72 +1,132 @@
 import React, { useState, useEffect } from 'react';
-import { Card, DatePicker, Select, Row, Col } from 'antd';
+import { Card, DatePicker, Select, Row, Col, Table, Typography, Alert } from 'antd';
 import { Line } from '@ant-design/plots';
 import styled from 'styled-components';
 import dayjs, { Dayjs } from 'dayjs';
+import { parameterConfig } from './Dashboard';
+import { getLatestSensorData, getWarningLogs } from '../services/db';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
+const { Title, Paragraph, Text } = Typography;
 
 const StyledCard = styled(Card)`
   margin-bottom: 24px;
 `;
 
-const generateHistoricalData = (days: number) => {
-  const data = [];
-  const now = dayjs();
-  
-  for (let i = 0; i < days * 24; i++) {
-    const time = now.subtract((days * 24 - i) * 3600, 'second');
-    data.push({
-      time: time.toISOString(),
-      temperature: 20 + Math.sin(i / 12) * 5 + Math.random() * 2,
-      humidity: 60 + Math.sin(i / 12) * 10 + Math.random() * 5,
-      co2: 400 + Math.sin(i / 12) * 100 + Math.random() * 50,
-      light: 2000 + Math.sin(i / 12) * 500 + Math.random() * 200,
-    });
-  }
-  
-  return data;
-};
+const parameterRelations = {
+  airTemperature: {
+    affects: ['airHumidity', 'soilTemperature'],
+    controlMethods: ['通风系统', '遮阳系统'],
+    description: '空气温度是影响植物生长的关键因素。过高的温度会导致植物蒸腾过度，影响生长；过低的温度会抑制植物的新陈代谢。',
+  },
+  airHumidity: {
+    affects: ['soilMoisture'],
+    controlMethods: ['加湿系统', '通风系统'],
+    description: '空气湿度影响植物的蒸腾作用。过高的湿度可能导致病害滋生；过低的湿度会导致植物水分流失过快。',
+  },
+  soilMoisture: {
+    affects: ['ec', 'soilTemperature'],
+    controlMethods: ['灌溉系统', '排水系统'],
+    description: '土壤水分直接影响植物根系的吸水和养分吸收。保持适宜的土壤湿度对植物生长至关重要。',
+  },
+  soilTemperature: {
+    affects: ['soilMoisture', 'ec'],
+    controlMethods: ['土壤加热系统', '遮阳系统'],
+    description: '土壤温度影响根系活动和养分吸收。温度过高或过低都会影响植物生长。',
+  },
+  co2Level: {
+    affects: [],
+    controlMethods: ['CO2补充系统', '通风系统'],
+    description: 'CO2是植物光合作用的原料。适当的CO2浓度可以提高植物的光合效率。',
+  },
+  lightIntensity: {
+    affects: ['airTemperature', 'soilTemperature'],
+    controlMethods: ['补光系统', '遮阳系统'],
+    description: '光照强度直接影响植物的光合作用。不同生长阶段的植物对光照强度的需求不同。',
+  },
+  soilPH: {
+    affects: ['ec'],
+    controlMethods: ['pH调节系统'],
+    description: '土壤pH值影响养分的有效性和微生物活动。不同植物对pH值的适应范围不同。',
+  },
+  ec: {
+    affects: [],
+    controlMethods: ['施肥系统', '冲洗系统'],
+    description: '电导率(EC)反映了土壤中可溶性盐的含量，直接影响植物的养分吸收。',
+  },
+} as const;
 
 const DataAnalysis: React.FC = () => {
-  const [historicalData, setHistoricalData] = useState<any[]>([]);
-  const [selectedParameter, setSelectedParameter] = useState<string>('temperature');
-  const [timeRange, setTimeRange] = useState<[Dayjs, Dayjs]>([
-    dayjs().subtract(7, 'day'),
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
+    dayjs().subtract(24, 'hour'),
     dayjs()
   ]);
+  const [selectedParameter, setSelectedParameter] = useState<string>('airTemperature');
+  const [historicalData, setHistoricalData] = useState<any[]>([]);
+  const [warningLogs, setWarningLogs] = useState<any[]>([]);
+
+  const loadData = async () => {
+    try {
+      const timeRange = dateRange[1].valueOf() - dateRange[0].valueOf();
+      const sensorData = await getLatestSensorData(timeRange);
+      setHistoricalData(sensorData);
+      
+      const warnings = await getWarningLogs(timeRange);
+      setWarningLogs(warnings);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  };
 
   useEffect(() => {
-    // 模拟加载历史数据
-    const days = Math.ceil(timeRange[1].diff(timeRange[0], 'day', true));
-    setHistoricalData(generateHistoricalData(days));
-  }, [timeRange]);
-
-  const parameters = {
-    temperature: { name: '温度', unit: '°C' },
-    humidity: { name: '湿度', unit: '%' },
-    co2: { name: 'CO2浓度', unit: 'ppm' },
-    light: { name: '光照', unit: 'lux' },
-  };
+    loadData();
+  }, [loadData]);
 
   const config = {
     data: historicalData,
-    xField: 'time',
+    padding: [20, 20, 50, 40],
+    xField: 'timestamp',
     yField: selectedParameter,
-    seriesField: 'type',
+    smooth: false,
+    animation: false,
+    autoFit: true,
+    color: parameterConfig[selectedParameter].color,
     xAxis: {
       type: 'time',
+      tickCount: 8,
+      label: {
+        formatter: (text: string) => dayjs(Number(text)).format('HH:mm')
+      },
       title: {
         text: '时间',
       },
     },
     yAxis: {
       title: {
-        text: `${parameters[selectedParameter as keyof typeof parameters].name} (${parameters[selectedParameter as keyof typeof parameters].unit})`,
+        text: `${parameterConfig[selectedParameter].name} (${parameterConfig[selectedParameter].unit || ''})`,
+      },
+      label: {
+        formatter: (v: string) => `${Number(v).toFixed(1)}${parameterConfig[selectedParameter].unit || ''}`,
       },
     },
-    smooth: true,
+    tooltip: {
+      formatter: (data: any) => {
+        return {
+          name: parameterConfig[selectedParameter].name,
+          value: `${Number(data[selectedParameter]).toFixed(1)}${parameterConfig[selectedParameter].unit || ''}`,
+          time: dayjs(data.timestamp).format('YYYY-MM-DD HH:mm:ss'),
+        };
+      },
+    },
+    point: {
+      size: 3,
+      shape: 'circle',
+      style: {
+        stroke: '#fff',
+        lineWidth: 1,
+      },
+    },
   };
 
   const calculateStatistics = () => {
@@ -82,9 +142,72 @@ const DataAnalysis: React.FC = () => {
 
   const stats = calculateStatistics();
 
+  const warningColumns = [
+    {
+      title: '时间',
+      dataIndex: 'timestamp',
+      key: 'timestamp',
+      render: (timestamp: number) => dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss'),
+    },
+    {
+      title: '参数',
+      dataIndex: 'parameter',
+      key: 'parameter',
+    },
+    {
+      title: '数值',
+      dataIndex: 'value',
+      key: 'value',
+      render: (value: number, record: any) => 
+        `${value} ${parameterConfig[record.parameter]?.unit || ''}`,
+    },
+    {
+      title: '消息',
+      dataIndex: 'message',
+      key: 'message',
+    },
+    {
+      title: '级别',
+      dataIndex: 'level',
+      key: 'level',
+      render: (level: string) => (
+        <Text type={level === 'error' ? 'danger' : 'warning'}>{level}</Text>
+      ),
+    },
+  ];
+
   return (
     <div>
-      <h2>数据分析</h2>
+      <Title level={2}>数据分析</Title>
+      
+      <StyledCard title="参数说明">
+        <Paragraph>
+          <Text strong>当前选中参数：</Text>
+          {parameterConfig[selectedParameter].name}
+        </Paragraph>
+        <Paragraph>
+          <Text strong>参数描述：</Text>
+          {parameterRelations[selectedParameter as keyof typeof parameterRelations].description}
+        </Paragraph>
+        <Paragraph>
+          <Text strong>影响的参数：</Text>
+          {parameterRelations[selectedParameter as keyof typeof parameterRelations].affects.map(
+            param => parameterConfig[param].name
+          ).join('、') || '无直接影响'}
+        </Paragraph>
+        <Paragraph>
+          <Text strong>控制方式：</Text>
+          {parameterRelations[selectedParameter as keyof typeof parameterRelations].controlMethods.join('、')}
+        </Paragraph>
+        <Alert
+          message="参数阈值说明"
+          description={`警告阈值：${parameterConfig[selectedParameter].warningThreshold} ${parameterConfig[selectedParameter].unit || ''}
+            错误阈值：${parameterConfig[selectedParameter].errorThreshold} ${parameterConfig[selectedParameter].unit || ''}`}
+          type="info"
+          showIcon
+        />
+      </StyledCard>
+
       <Row gutter={16}>
         <Col span={24}>
           <StyledCard>
@@ -94,15 +217,15 @@ const DataAnalysis: React.FC = () => {
                 onChange={setSelectedParameter}
                 style={{ width: 120, marginRight: 16 }}
               >
-                {Object.entries(parameters).map(([key, { name }]) => (
+                {Object.entries(parameterConfig).map(([key, { name }]) => (
                   <Option key={key} value={key}>{name}</Option>
                 ))}
               </Select>
               <RangePicker
-                value={timeRange}
+                value={dateRange}
                 onChange={(dates) => {
                   if (dates) {
-                    setTimeRange([dates[0]!, dates[1]!]);
+                    setDateRange([dates[0]!, dates[1]!]);
                   }
                 }}
               />
@@ -115,23 +238,32 @@ const DataAnalysis: React.FC = () => {
       <Row gutter={16}>
         <Col span={8}>
           <StyledCard>
-            <h3>平均值</h3>
-            <p>{stats.avg} {parameters[selectedParameter as keyof typeof parameters].unit}</p>
+            <Title level={4}>平均值</Title>
+            <Text>{stats.avg} {parameterConfig[selectedParameter].unit || ''}</Text>
           </StyledCard>
         </Col>
         <Col span={8}>
           <StyledCard>
-            <h3>最大值</h3>
-            <p>{stats.max} {parameters[selectedParameter as keyof typeof parameters].unit}</p>
+            <Title level={4}>最大值</Title>
+            <Text>{stats.max} {parameterConfig[selectedParameter].unit || ''}</Text>
           </StyledCard>
         </Col>
         <Col span={8}>
           <StyledCard>
-            <h3>最小值</h3>
-            <p>{stats.min} {parameters[selectedParameter as keyof typeof parameters].unit}</p>
+            <Title level={4}>最小值</Title>
+            <Text>{stats.min} {parameterConfig[selectedParameter].unit || ''}</Text>
           </StyledCard>
         </Col>
       </Row>
+
+      <StyledCard title="警告记录">
+        <Table
+          dataSource={warningLogs}
+          columns={warningColumns}
+          rowKey="timestamp"
+          pagination={{ pageSize: 10 }}
+        />
+      </StyledCard>
     </div>
   );
 };

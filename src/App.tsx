@@ -7,38 +7,79 @@ import Dashboard from './pages/Dashboard';
 import EnvironmentControl from './pages/EnvironmentControl';
 import AlarmSettings from './pages/AlarmSettings';
 import DataAnalysis from './pages/DataAnalysis';
+import NotificationPanel from './components/NotificationPanel';
+import InterferencePanel from './components/InterferencePanel';
+import { SensorDataProvider } from './contexts/SensorDataContext';
+import Settings from './pages/Settings';
 
-// 导入antd样式
+// Import antd styles
 import 'antd/dist/reset.css';
 
-const { Content } = Layout;
+const { Content, Sider } = Layout;
 
 const StyledLayout = styled(Layout)`
   min-height: 100vh;
+  display: flex;
+  flex-direction: row;
+  background: #f0f2f5;
+`;
+
+const StyledSider = styled(Sider)`
+  flex: 0 0 240px;
+  width: 240px !important;
+  min-width: 240px !important;
+  max-width: 240px !important;
+  height: 100vh;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: sticky;
+  top: 0;
+  left: 0;
 `;
 
 const StyledContent = styled(Content)`
-  margin: 24px 16px;
+  flex: 1;
   padding: 24px;
   background: #fff;
-  min-height: 280px;
+  overflow: auto;
+  min-height: 100vh;
+  margin: 0;
+  
+  // 添加内部容器来处理通知面板和主要内容
+  .content-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+  }
 `;
 
 const App: React.FC = () => {
+  const handleAddInterference = (values: any) => {
+    // 处理添加干扰的逻辑
+    console.log('Adding interference:', values);
+  };
+
   return (
-    <StyledLayout>
-      <Sidebar />
-      <Layout>
+    <SensorDataProvider>
+      <StyledLayout>
+        <StyledSider>
+          <Sidebar />
+        </StyledSider>
         <StyledContent>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/control" element={<EnvironmentControl />} />
-            <Route path="/alarms" element={<AlarmSettings />} />
-            <Route path="/analysis" element={<DataAnalysis />} />
-          </Routes>
+          <div className="content-container">
+            <NotificationPanel />
+            <InterferencePanel onAddInterference={handleAddInterference} />
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/control" element={<EnvironmentControl />} />
+              <Route path="/alarm" element={<AlarmSettings />} />
+              <Route path="/analysis" element={<DataAnalysis />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </div>
         </StyledContent>
-      </Layout>
-    </StyledLayout>
+      </StyledLayout>
+    </SensorDataProvider>
   );
 };
 
