@@ -1,0 +1,63 @@
+# Node.js
+node_modules/
+dist/
+build/
+.npm
+.yarn/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.TemporaryItems
+.__pycache__
+
+# Environment
+.env
+.env.local
+.env.development
+.env.production
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+/test-results/
+/playwright-report/
+
+# Build cache
+.cache/
+.temp/
+.rpt2_cache/
+
+# Misc
+*.log
+logs/
+.cache-loader/
+.parcel-cache/
+.eslintcache
+.yarn-integrity
