@@ -1,74 +1,112 @@
-# 实时监控系统设计与实现
+# 实时监控系统实现
 
-## 1. 实时监控系统架构
+## 1. 系统概述
 
-智能温室环境控制系统的实时监控功能通过以下组件实现：
+自然生态智慧农业大棚控制系统的实时监控功能通过以下组件实现：
 
-1. **传感器数据模拟**：由 `SensorDataContext` 实现数据的生成和更新
-2. **数据可视化**：通过图表和仪表盘展示实时和历史数据
-3. **报警机制**：根据阈值设定实现自动报警
-4. **数据分析**：提供趋势分析和预测功能
+1. **传感器数据模拟**: 生成模拟的环境参数数据
+2. **数据可视化**: 实时展示环境数据的变化趋势
+3. **报警机制**: 监测环境参数异常并及时报警
+4. **数据分析**: 对环境数据进行简单分析和趋势预测
 
-## 2. 传感器数据模拟
+## 2. 传感器数据上下文
 
-### 2.1 数据上下文实现
+**文件位置**: `src/contexts/SensorDataContext.tsx`
 
-**文件位置**：`src/contexts/SensorDataContext.tsx`
+系统使用Context API创建全局的传感器数据上下文，为应用提供一致的数据访问：
 
-系统通过 Context API 实现传感器数据的生成和共享：
+```tsx
+// SensorDataContext.tsx 的核心代码如下：
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import { SensorData, generateSensorData } from '../utils/sensorDataGenerator';
+import { TimeSeriesStorage } from '../services/TimeSeriesStorage';
+import { checkAlarms, WarningLog } from '../services/AlarmService';
 
-```typescript
-export const SensorDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [sensorData, setSensorData] = useState<SensorData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+interface SensorDataContextType {
+  currentData: SensorData | null;
+  isLoading: boolean;
+  warnings: WarningLog[];
+  getHistoricalData: (start: number, end: number) => Promise<SensorData[]>;
+  clearWarning: (timestamp: number) => void;
+}
 
-  // 每秒更新数据
+const SensorDataContext = createContext<SensorDataContextType | undefined>(undefined);
+
+export const SensorDataProvider: React.FC = ({ children }) => {
+  const [currentData, setCurrentData] = useState<SensorData | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [warnings, setWarnings] = useState<WarningLog[]>([]);
+  
+  // 存储服务实例
+  const storage = TimeSeriesStorage.getInstance();
+  
+  // 定时生成传感器数据
   useEffect(() => {
-    const updateInterval = setInterval(() => {
-      try {
-        const newData = generateSensorData();
-        timeSeriesStorage.addData(newData);
-        setSensorData(newData);
-        setIsLoading(false);
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error('Failed to update sensor data'));
+    setIsLoading(true);
+    
+    // 初始化数据
+    const initialData = generateSensorData();
+    setCurrentData(initialData);
+    storage.storeData(initialData);
+    setIsLoading(false);
+    
+    // 设置定时器，每秒生成新数据
+    const intervalId = setInterval(() => {
+      const newData = generateSensorData();
+      setCurrentData(newData);
+      storage.storeData(newData);
+      
+      // 检查报警
+      const newWarnings = checkAlarms(newData);
+      if (newWarnings.length > 0) {
+        setWarnings(prev => [...prev, ...newWarnings]);
+        // 保存报警日志
+        newWarnings.forEach(warning => {
+          storage.storeWarning(warning);
+        });
       }
     }, 1000);
-
-    return () => clearInterval(updateInterval);
+    
+    return () => clearInterval(intervalId);
   }, []);
-
-  const getHistoricalData = (startTime: number, endTime: number): SensorData[] => {
-    return timeSeriesStorage.getData(startTime, endTime);
+  
+  // 获取历史数据
+  const getHistoricalData = async (start: number, end: number): Promise<SensorData[]> => {
+    return await storage.getData(start, end);
   };
-
-  const getStorageStats = () => {
-    return timeSeriesStorage.getStats();
+  
+  // 清除报警
+  const clearWarning = (timestamp: number) => {
+    setWarnings(prev => prev.filter(w => w.timestamp !== timestamp));
   };
-
-  const cleanupOldData = (beforeTimestamp: number) => {
-    timeSeriesStorage.cleanupDataBefore(beforeTimestamp);
-  };
-
+  
   return (
-    <SensorDataContext.Provider 
-      value={{ 
-        sensorData, 
-        isLoading, 
-        error,
-        getHistoricalData,
-        getStorageStats,
-        cleanupOldData
-      }}
-    >
+    <SensorDataContext.Provider value={{ 
+      currentData, 
+      isLoading, 
+      warnings, 
+      getHistoricalData, 
+      clearWarning 
+    }}>
       {children}
     </SensorDataContext.Provider>
   );
 };
+
+export const useSensorData = () => {
+  const context = useContext(SensorDataContext);
+  if (context === undefined) {
+    throw new Error('useSensorData must be used within a SensorDataProvider');
+  }
+  return context;
+};
 ```
 
-### 2.2 传感器数据类型
+## 3. 传感器数据生成
+
+### 3.1 传感器数据类型
+
+**文件位置**: `src/types/sensorData.ts`
 
 ```typescript
 export interface SensorData {
@@ -80,121 +118,43 @@ export interface SensorData {
   co2Level: number;
   lightIntensity: number;
   soilPH: number;
-  ec: number;
+  ec: number; // 电导率，表示溶液中的离子含量
 }
 ```
 
-### 2.3 数据生成算法
+### 3.2 数据生成算法
 
-系统会根据配置的范围生成模拟传感器数据，以测试和演示系统功能：
+**文件位置**: `src/utils/sensorDataGenerator.ts`
 
 ```typescript
-const generateSensorData = (): SensorData => {
+import { SensorData } from '../types/sensorData';
+import { environmentConfig } from '../config/environmentConfig';
+
+// 生成随机波动的传感器数据
+export const generateSensorData = (): SensorData => {
+  const now = Date.now();
+  const hour = new Date().getHours();
+  
+  // 基于时间的变化模式：白天温度高、湿度低，夜间温度低、湿度高
+  const isDaytime = hour >= 6 && hour <= 18;
+  const dayFactor = isDaytime ? 1 : 0.8;
+  
+  // 添加随机波动
+  const randomFactor = (min: number, max: number) => 
+    min + Math.random() * (max - min);
+  
+  // 生成带有自然波动的传感器数据
   return {
-    timestamp: Date.now(),
-    airTemperature: Number((20 + Math.random() * 10).toFixed(2)),  // 20-30℃
-    airHumidity: Number((60 + Math.random() * 20).toFixed(2)),     // 60-80%
-    soilMoisture: Number((70 + Math.random() * 15).toFixed(2)),    // 70-85%
-    soilTemperature: Number((18 + Math.random() * 8).toFixed(2)),  // 18-26℃
-    co2Level: Number((400 + Math.random() * 200).toFixed(2)),      // 400-600ppm
-    lightIntensity: Number((2000 + Math.random() * 1000).toFixed(2)), // 2000-3000lux
-    soilPH: Number((6.5 + Math.random()).toFixed(2)),              // 6.5-7.5
-    ec: Number((1.2 + Math.random() * 0.5).toFixed(2)),            // 1.2-1.7 mS/cm
+    timestamp: now,
+    airTemperature: environmentConfig.airTemperature.target * dayFactor * randomFactor(0.9, 1.1),
+    airHumidity: environmentConfig.airHumidity.target * (2 - dayFactor) * randomFactor(0.9, 1.1),
+    soilMoisture: environmentConfig.soilMoisture.target * randomFactor(0.95, 1.05),
+    soilTemperature: environmentConfig.soilTemperature.target * dayFactor * randomFactor(0.95, 1.05),
+    co2Level: environmentConfig.co2Level.target * randomFactor(0.9, 1.1),
+    lightIntensity: environmentConfig.lightIntensity.target * dayFactor * randomFactor(0.7, 1.3),
+    soilPH: environmentConfig.soilPH.target * randomFactor(0.98, 1.02),
+    ec: environmentConfig.ec.target * randomFactor(0.95, 1.05)
   };
-};
-```
-
-## 3. 实时监控界面
-
-### 3.1 仪表盘布局
-
-**文件位置**：`src/pages/Dashboard.tsx`
-
-仪表盘页面通过卡片布局展示各环境参数的实时状态：
-
-```tsx
-<Row gutter={[16, 16]}>
-  {Object.entries(parameterConfig).map(([key, config]) => (
-    <Col xs={24} sm={12} md={8} lg={6} key={key}>
-      <ParameterCard
-        title={config.title}
-        value={sensorData ? sensorData[key as keyof SensorData] : 0}
-        unit={config.unit}
-        status={getParameterStatus(key as keyof SensorData, sensorData)}
-        min={config.min}
-        max={config.max}
-        target={config.target}
-        icon={config.icon}
-      />
-    </Col>
-  ))}
-</Row>
-```
-
-### 3.2 参数卡片组件
-
-**文件位置**：`src/components/ParameterCard.tsx`
-
-每个环境参数通过独立的卡片组件展示，包含当前值、状态和趋势：
-
-```tsx
-const ParameterCard: React.FC<ParameterCardProps> = ({
-  title,
-  value,
-  unit,
-  status,
-  min,
-  max,
-  target,
-  icon
-}) => {
-  return (
-    <Card className="parameter-card">
-      <div className="parameter-header">
-        <div className="parameter-icon">{icon}</div>
-        <div className="parameter-title">{title}</div>
-      </div>
-      
-      <div className="parameter-value">
-        <span className="value">{value.toFixed(1)}</span>
-        <span className="unit">{unit}</span>
-      </div>
-      
-      <Progress 
-        percent={((value - min) / (max - min)) * 100} 
-        strokeColor={getStatusColor(status)}
-        showInfo={false}
-      />
-      
-      <div className="parameter-footer">
-        <StatusTag status={status} />
-        <div className="parameter-target">
-          目标: {target} {unit}
-        </div>
-      </div>
-    </Card>
-  );
-};
-```
-
-### 3.3 参数状态计算
-
-系统根据当前值与设定的目标值和警戒值比较，计算出参数的状态：
-
-```typescript
-const getParameterStatus = (parameter: keyof SensorData, data: SensorData | null): ParameterStatus => {
-  if (!data) return 'normal';
-  
-  const config = parameterConfig[parameter];
-  const value = data[parameter];
-  
-  if (value >= config.criticalThreshold || value <= config.min) {
-    return 'critical';
-  } else if (value >= config.warningThreshold || value <= config.min + (config.target - config.min) * 0.3) {
-    return 'warning';
-  } else {
-    return 'normal';
-  }
 };
 ```
 
@@ -400,109 +360,306 @@ const AlarmNotification: React.FC<AlarmNotificationProps> = ({ alarm, onClose })
 };
 ```
 
-## 6. 数据分析功能
+## 6. 仪表盘布局
 
-### 6.1 趋势分析
+### 6.1 布局结构
 
-系统对历史数据进行分析，计算关键指标的变化趋势：
+**文件位置**：`src/components/Dashboard.tsx`
 
-```typescript
-export const analyzeTrend = (data: SensorData[], parameter: keyof SensorData): TrendAnalysis => {
-  if (data.length < 2) {
-    return { trend: 'stable', changeRate: 0 };
-  }
-  
-  // 计算平均变化率
-  let totalChange = 0;
-  for (let i = 1; i < data.length; i++) {
-    const timeDiff = (data[i].timestamp - data[i-1].timestamp) / 1000; // 秒
-    const valueDiff = data[i][parameter] - data[i-1][parameter];
-    totalChange += (valueDiff / timeDiff);
-  }
-  
-  const averageChangeRate = totalChange / (data.length - 1);
-  
-  // 判断趋势
-  let trend: 'rising' | 'falling' | 'stable';
-  if (averageChangeRate > 0.01) {
-    trend = 'rising';
-  } else if (averageChangeRate < -0.01) {
-    trend = 'falling';
-  } else {
-    trend = 'stable';
-  }
-  
-  return { trend, changeRate: averageChangeRate };
+仪表盘采用响应式网格布局，适配不同屏幕尺寸：
+
+```tsx
+const Dashboard: React.FC = () => {
+  const { currentData, isLoading, warnings } = useSensorData();
+
+  return (
+    <div className="dashboard">
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} md={8} lg={6}>
+          <ParameterCard
+            title="空气温度"
+            value={currentData?.airTemperature}
+            unit="°C"
+            icon={<ThermometerOutlined />}
+            color="#ff7a45"
+            isLoading={isLoading}
+            thresholds={environmentConfig.airTemperature}
+          />
+        </Col>
+        
+        <Col xs={24} sm={12} md={8} lg={6}>
+          <ParameterCard
+            title="空气湿度"
+            value={currentData?.airHumidity}
+            unit="%"
+            icon={<CloudOutlined />}
+            color="#1890ff"
+            isLoading={isLoading}
+            thresholds={environmentConfig.airHumidity}
+          />
+        </Col>
+        
+        {/* 其他参数卡片 */}
+      </Row>
+      
+      {/* 警告显示区域 */}
+      <div className="warnings-container">
+        {warnings.map(warning => (
+          <AlarmNotification 
+            key={warning.timestamp} 
+            alarm={warning} 
+            onClose={() => clearWarning(warning.timestamp)}
+          />
+        ))}
+      </div>
+    </div>
+  );
 };
 ```
 
-### 6.2 相关性分析
+### 6.2 参数卡片组件
 
-系统分析不同环境参数之间的相关性，帮助理解参数间的影响关系：
+**文件位置**：`src/components/ParameterCard.tsx`
 
-```typescript
-export const calculateCorrelation = (data: SensorData[], param1: keyof SensorData, param2: keyof SensorData): number => {
-  if (data.length < 3) return 0;
+参数卡片展示单个环境参数的当前值和状态：
+
+```tsx
+const ParameterCard: React.FC<ParameterCardProps> = ({
+  title,
+  value,
+  unit,
+  icon,
+  color,
+  isLoading,
+  thresholds
+}) => {
+  // 计算参数状态
+  const getStatus = () => {
+    if (value === undefined || value === null) return 'normal';
+    if (value > thresholds.criticalThreshold) return 'critical';
+    if (value > thresholds.warningThreshold) return 'warning';
+    return 'normal';
+  };
   
-  const values1 = data.map(d => d[param1]);
-  const values2 = data.map(d => d[param2]);
+  const status = getStatus();
   
-  const mean1 = values1.reduce((sum, val) => sum + val, 0) / values1.length;
-  const mean2 = values2.reduce((sum, val) => sum + val, 0) / values2.length;
+  // 状态颜色映射
+  const statusColors = {
+    normal: '#52c41a',
+    warning: '#faad14',
+    critical: '#f5222d'
+  };
   
-  let numerator = 0;
-  let denom1 = 0;
-  let denom2 = 0;
-  
-  for (let i = 0; i < values1.length; i++) {
-    const diff1 = values1[i] - mean1;
-    const diff2 = values2[i] - mean2;
+  return (
+    <Card className="parameter-card" bordered={false}>
+      <Skeleton loading={isLoading} active paragraph={{ rows: 1 }}>
+        <div className="card-title">
+          {icon} {title}
+        </div>
+        <div className="card-value" style={{ color: statusColors[status] }}>
+          {value !== undefined && value !== null ? value.toFixed(1) : '--'} 
+          <span className="unit">{unit}</span>
+        </div>
+        <Progress 
+          percent={value !== undefined && value !== null 
+            ? (value / thresholds.criticalThreshold) * 100 
+            : 0
+          } 
+          strokeColor={statusColors[status]}
+          status={status === 'critical' ? 'exception' : 'normal'}
+          showInfo={false}
+        />
+        <div className="status-text" style={{ color: statusColors[status] }}>
+          {status === 'normal' ? '正常' : status === 'warning' ? '警告' : '危险'}
+        </div>
+      </Skeleton>
+    </Card>
+  );
+};
+```
+
+## 7. 数据分析功能
+
+### 7.1 趋势分析
+
+系统提供环境参数的趋势分析功能，帮助用户理解农业大棚环境的变化模式：
+
+```tsx
+const TrendAnalysis: React.FC<TrendAnalysisProps> = ({ paramName, data }) => {
+  // 计算变化趋势
+  const calculateTrend = () => {
+    if (data.length < 2) return { direction: 'stable', percentage: 0 };
     
-    numerator += diff1 * diff2;
-    denom1 += diff1 * diff1;
-    denom2 += diff2 * diff2;
+    const latestValue = data[data.length - 1].value;
+    const earliestValue = data[0].value;
+    const change = latestValue - earliestValue;
+    const percentage = (change / earliestValue) * 100;
+    
+    return {
+      direction: change > 0 ? 'up' : change < 0 ? 'down' : 'stable',
+      percentage: Math.abs(percentage)
+    };
+  };
+  
+  const trend = calculateTrend();
+  
+  return (
+    <div className="trend-analysis">
+      <h3>{getParameterTitle(paramName)} 变化趋势</h3>
+      <div className="trend-indicator">
+        {trend.direction === 'up' && <ArrowUpOutlined style={{ color: '#f5222d' }} />}
+        {trend.direction === 'down' && <ArrowDownOutlined style={{ color: '#52c41a' }} />}
+        {trend.direction === 'stable' && <MinusOutlined style={{ color: '#1890ff' }} />}
+        <span className="percentage">{trend.percentage.toFixed(1)}%</span>
+        <span className="direction-text">
+          {trend.direction === 'up' ? '上升' : trend.direction === 'down' ? '下降' : '稳定'}
+        </span>
+      </div>
+      <p className="analysis-text">
+        {generateAnalysisText(paramName, trend)}
+      </p>
+    </div>
+  );
+};
+
+// 生成分析文本
+const generateAnalysisText = (paramName: string, trend: { direction: string, percentage: number }) => {
+  // 根据参数名和趋势生成适当的分析文本
+  if (paramName === 'airTemperature') {
+    if (trend.direction === 'up' && trend.percentage > 5) {
+      return '温度明显上升，请注意通风降温。';
+    } else if (trend.direction === 'down' && trend.percentage > 5) {
+      return '温度明显下降，请注意保温。';
+    } else {
+      return '温度保持稳定，农业大棚环境良好。';
+    }
   }
   
-  return numerator / Math.sqrt(denom1 * denom2);
+  // 其他参数的分析文本...
+  
+  return '参数变化在正常范围内。';
 };
 ```
 
-## 7. 系统参数配置
+### 7.2 参数相关性分析
 
-环境参数的配置信息定义了各参数的标题、单位、范围和警戒值：
+系统提供环境参数间的相关性分析，帮助用户理解不同环境因素间的关联：
 
-```typescript
-export const parameterConfig = {
-  airTemperature: {
-    title: '空气温度',
-    unit: '°C',
-    min: 20,
-    max: 30,
-    target: 25,
-    warningThreshold: 30,
-    criticalThreshold: 35,
-    icon: <ThermometerOutlined />
-  },
-  airHumidity: {
-    title: '空气湿度',
-    unit: '%',
-    min: 60,
-    max: 80,
-    target: 70,
-    warningThreshold: 80,
-    criticalThreshold: 85,
-    icon: <CloudOutlined />
-  },
-  soilMoisture: {
-    title: '土壤湿度',
-    unit: '%',
-    min: 70,
-    max: 85,
-    target: 75,
-    warningThreshold: 85,
-    criticalThreshold: 90,
-    icon: <ExperimentOutlined />
-  },
-  // 其他参数配置...
+```tsx
+const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ data }) => {
+  // 计算参数对之间的相关系数
+  const calculateCorrelation = () => {
+    const parameters = ['airTemperature', 'airHumidity', 'soilMoisture', 'lightIntensity', 'co2Level'];
+    const correlationMatrix: Record<string, Record<string, number>> = {};
+    
+    parameters.forEach(param1 => {
+      correlationMatrix[param1] = {};
+      parameters.forEach(param2 => {
+        if (param1 === param2) {
+          correlationMatrix[param1][param2] = 1; // 自相关为1
+        } else {
+          // 提取两个参数的数据序列
+          const series1 = data.map(d => d[param1 as keyof SensorData] as number);
+          const series2 = data.map(d => d[param2 as keyof SensorData] as number);
+          
+          // 计算皮尔逊相关系数
+          correlationMatrix[param1][param2] = calculatePearsonCorrelation(series1, series2);
+        }
+      });
+    });
+    
+    return correlationMatrix;
+  };
+  
+  const correlationMatrix = calculateCorrelation();
+  
+  // 使用热力图展示相关性矩阵
+  // 实现省略...
+  
+  return (
+    <div className="correlation-analysis">
+      <h3>环境参数相关性分析</h3>
+      <div className="heatmap-container">
+        {/* 热力图渲染 */}
+      </div>
+      <div className="correlation-insights">
+        <h4>主要发现</h4>
+        <ul>
+          {Object.entries(correlationMatrix).map(([param1, relations]) => {
+            // 找出与该参数相关性最强的另一个参数
+            const strongestCorrelation = Object.entries(relations)
+              .filter(([param2]) => param1 !== param2)
+              .sort(([, value1], [, value2]) => Math.abs(value2) - Math.abs(value1))[0];
+            
+            if (strongestCorrelation) {
+              const [param2, coefficient] = strongestCorrelation;
+              return (
+                <li key={`${param1}-${param2}`}>
+                  {getParameterTitle(param1)} 与 {getParameterTitle(param2)} 
+                  {coefficient > 0 ? ' 正相关' : ' 负相关'}，
+                  相关系数为 {Math.abs(coefficient).toFixed(2)}
+                </li>
+              );
+            }
+            return null;
+          })}
+        </ul>
+      </div>
+    </div>
+  );
+};
+```
+
+## 8. 数据导出功能
+
+系统支持将环境参数数据导出为CSV格式，方便进一步分析：
+
+```tsx
+const exportToCSV = (data: SensorData[], timeRange: [number, number]) => {
+  const startDate = new Date(timeRange[0]).toLocaleString();
+  const endDate = new Date(timeRange[1]).toLocaleString();
+  
+  // 构建CSV表头
+  const headers = [
+    '时间戳', '时间', '空气温度(℃)', '空气湿度(%)', 
+    '土壤湿度(%)', '土壤温度(℃)', 'CO2浓度(ppm)', 
+    '光照强度(lux)', '土壤pH值', '电导率(mS/cm)'
+  ];
+  
+  // 构建CSV行数据
+  const rows = data.map(d => [
+    d.timestamp,
+    new Date(d.timestamp).toLocaleString(),
+    d.airTemperature.toFixed(1),
+    d.airHumidity.toFixed(1),
+    d.soilMoisture.toFixed(1),
+    d.soilTemperature.toFixed(1),
+    d.co2Level.toFixed(0),
+    d.lightIntensity.toFixed(0),
+    d.soilPH.toFixed(2),
+    d.ec.toFixed(2)
+  ]);
+  
+  // 组合CSV内容
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.join(','))
+  ].join('\n');
+  
+  // 创建下载链接
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `农业大棚数据_${startDate}_${endDate}.csv`);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  
+  // 触发下载
+  link.click();
+  
+  // 清理
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 ``` 

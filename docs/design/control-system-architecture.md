@@ -1,23 +1,111 @@
-# 智能控制系统架构设计与实现
+# 控制系统架构设计
 
-## 1. 控制系统整体架构
+## 一、控制系统整体架构
 
-智能温室环境控制系统采用多级控制架构，包含智能控制器工厂、各类控制算法及其参数化配置：
+自然生态智慧农业大棚控制系统采用多级控制架构，包含智能控制器工厂、各类控制算法及其参数化配置：
 
-1. **控制器工厂**：负责创建不同类型的控制器
-2. **控制算法**：包括PID控制、模糊控制和Smith预测控制
-3. **子系统控制**：针对通风、加湿、灌溉等各子系统的专用控制逻辑
-4. **参数配置**：各控制算法和子系统的参数化配置
+```mermaid
+flowchart TD
+    subgraph ControllerFactory["控制器工厂"]
+        Factory[ControllerFactory] -- 创建 --> PID[PID控制器]
+        Factory -- 创建 --> Fuzzy[模糊控制器]
+        Factory -- 创建 --> Smith[Smith预测控制器]
+    end
+    
+    subgraph ControlAlgorithms["控制算法"]
+        PID --> PIDControl[PID控制逻辑]
+        Fuzzy --> FuzzyControl[模糊控制逻辑]
+        Smith --> SmithControl[Smith预测控制逻辑]
+    end
+    
+    subgraph SubsystemControl["子系统控制"]
+        EnvironmentControl[EnvironmentControlService] --> Ventilation[通风系统]
+        EnvironmentControl --> Humidification[加湿系统]
+        EnvironmentControl --> Lighting[补光系统]
+        EnvironmentControl --> Irrigation[灌溉系统]
+        EnvironmentControl --> CO2[CO2系统]
+        EnvironmentControl --> Shading[遮阳系统]
+    end
+    
+    subgraph ParameterConfig["参数配置"]
+        ConfigService[ConfigService] --> PIDParams[PID参数]
+        ConfigService --> FuzzyRules[模糊规则集]
+        ConfigService --> SmithParams[Smith预测参数]
+        ConfigService --> TargetValues[目标值配置]
+    end
+    
+    PID --> Ventilation
+    Fuzzy --> Humidification
+    PID --> Lighting
+    Fuzzy --> Irrigation
+    PID --> CO2
+    Smith --> Shading
+    
+    PIDParams --> PID
+    FuzzyRules --> Fuzzy
+    SmithParams --> Smith
+    TargetValues --> EnvironmentControl
+```
 
-## 2. 控制器实现
+## 二、控制器设计
 
-### 2.1 控制器工厂
+系统实现了三种不同特性的控制器，以适应不同环境参数的控制需求：
 
-**文件位置**：`src/controllers/ControlModels.ts`
+### 2.1 PID控制器
 
-系统使用工厂模式创建不同类型的控制器：
+**文件位置**：`src/controllers/PIDController.ts`
+
+PID控制器适用于线性特性明显的控制对象，如补光系统和CO2系统：
 
 ```typescript
+export class PIDController implements Controller {
+  private kp: number;  // 比例系数
+  private ki: number;  // 积分系数
+  private kd: number;  // 微分系数
+  private integralTerm: number = 0;  // 积分项
+  private lastError: number = 0;  // 上一次的误差
+  private outputMin: number;  // 输出下限
+  private outputMax: number;  // 输出上限
+  private sampleTime: number;  // 采样时间(ms)
+  private lastSampleTime: number = 0;  // 上次采样时间
+
+  constructor(params: PIDParams) {
+    this.kp = params.kp;
+    this.ki = params.ki;
+    this.kd = params.kd;
+    this.outputMin = params.outputMin || 0;
+    this.outputMax = params.outputMax || 100;
+    this.sampleTime = params.sampleTime || 1000;
+  }
+
+  calculate(setpoint: number, processValue: number): number {
+    const currentTime = Date.now();
+    const deltaTime = (currentTime - this.lastSampleTime) / 1000; // 转换为秒
+    
+    // 如果时间间隔过小，直接返回上次结果
+    if (deltaTime < this.sampleTime / 1000 && this.lastSampleTime !== 0) {
+      return this.clamp(this.lastOutput);
+    }
+    
+    // 计算误差
+    const error = setpoint - processValue;
+    
+    // 比例项
+    const proportionalTerm = this.kp * error;
+    
+    // 积分项 (考虑时间因素)
+    this.integralTerm += this.ki * error * deltaTime;
+    this.integralTerm = this.clamp(this.integralTerm); // 防止积分饱和
+    
+    // 微分项 (考虑时间因素)
+    const derivativeTerm = deltaTime > 0 ? 
+      this.kd * (error - this.lastError) / deltaTime : 0;
+    
+    // 计算总输出
+    const output = proportionalTerm + this.integralTerm + derivativeTerm;
+    
+    // 更新状态
+    this.lastError = error;
 export class ControllerFactory {
   static createController(type: 'pid' | 'fuzzy' | 'smith'): PIDController | FuzzyController | SmithPredictor {
     switch (type) {

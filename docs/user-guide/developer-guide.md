@@ -1,6 +1,6 @@
-# 智能温室环境控制系统开发指南
+# 自然生态智慧农业大棚控制系统开发指南
 
-本指南旨在帮助开发人员理解和扩展智能温室环境控制系统的功能。
+本指南旨在帮助开发人员理解和扩展自然生态智慧农业大棚控制系统的功能。
 
 ## 1. 项目结构
 
@@ -214,7 +214,7 @@ export async function fetchExternalData(): Promise<SensorData> {
     // 实现API调用
     const response = await fetch('https://api.example.com/sensor-data');
     const data = await response.json();
-    
+  
     // 转换为系统使用的格式
     return {
       timestamp: Date.now(),
@@ -237,7 +237,7 @@ useEffect(() => {
       const newData = useExternalData 
         ? await fetchExternalData() 
         : generateSensorData();
-        
+      
       timeSeriesStorage.addData(newData);
       setSensorData(newData);
       setIsLoading(false);
@@ -322,13 +322,13 @@ describe('Control Models', () => {
       isAuto: true,
       currentPower: 0
     };
-    
+  
     const sensorData = {
       timestamp: Date.now(),
       airTemperature: 32, // 高于警戒值
       airHumidity: 70
     };
-    
+  
     const power = calculateSystemPower(system, sensorData);
     expect(power).toBeGreaterThan(0); // 期望启动通风
     expect(power).toBeLessThanOrEqual(100); // 功率不应超过100%
@@ -360,11 +360,11 @@ describe('ControlCard', () => {
         onPowerChange={jest.fn()}
       />
     );
-    
+  
     // 模拟点击切换开关
     const toggle = getByRole('switch');
     fireEvent.click(toggle);
-    
+  
     // 验证回调是否被调用
     expect(onModeChange).toHaveBeenCalledWith(false);
   });
@@ -462,7 +462,7 @@ useEffect(() => {
       setProcessedData(e.data);
     };
     worker.postMessage(data);
-    
+  
     return () => worker.terminate();
   }
 }, [data]);
@@ -677,6 +677,7 @@ export const CONFIG = {
 **问题**：大量数据导致UI卡顿
 
 **解决方案**：
+
 1. 实现数据分页或虚拟滚动
 2. 减少重渲染（使用React.memo, useMemo等）
 3. 使用Web Worker处理大量计算
@@ -687,6 +688,7 @@ export const CONFIG = {
 **问题**：组件间状态同步困难
 
 **解决方案**：
+
 1. 使用React Context API管理全局状态
 2. 考虑使用Redux或MobX等状态管理库
 3. 使用组合组件而不是深层嵌套
@@ -697,6 +699,7 @@ export const CONFIG = {
 **问题**：实时数据与历史数据不一致
 
 **解决方案**：
+
 1. 实现单一数据源原则
 2. 使用乐观更新策略
 3. 实现数据版本控制
@@ -708,4 +711,4 @@ export const CONFIG = {
 - [TypeScript手册](https://www.typescriptlang.org/docs/)
 - [Ant Design组件库](https://ant.design/components/overview/)
 - [ECharts文档](https://echarts.apache.org/en/index.html)
-- [React性能优化](https://reactjs.org/docs/optimizing-performance.html) 
+- [React性能优化](https://reactjs.org/docs/optimizing-performance.html)

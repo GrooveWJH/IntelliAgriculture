@@ -1,10 +1,10 @@
-# 智能温室环境控制系统架构概览
+# 自然生态智慧农业大棚控制系统概览
 
 ## 一、系统设计
 
 ### 1.1 总体架构设计
 
-智能温室环境控制系统采用分层架构设计，通过多个模块协同工作，实现智能化环境监控与控制：
+自然生态智慧农业大棚控制系统采用分层架构设计，通过多个模块协同工作，实现智能化环境监控与控制：
 
 ```mermaid
 flowchart TD
@@ -14,28 +14,28 @@ flowchart TD
         A3[数据分析模块]
         A4[系统设置]
     end
-    
+  
     subgraph DataProcessing["数据处理层"]
         B1[传感器数据上下文]
         B2[控制系统服务]
         B3[时序数据存储服务]
     end
-    
+  
     subgraph Storage["数据存储层"]
         C1[内存缓存存储]
         C2[IndexedDB持久化存储]
         C3[配置数据存储]
     end
-    
+  
     A1 --> B1
     A2 --> B2
     A3 --> B3
     A4 --> B2
-    
+  
     B1 --> C1
     B2 --> C3
     B3 --> C2
-    
+  
     C1 --> C2
 ```
 
@@ -45,82 +45,85 @@ flowchart TD
 
 用户界面包含四个主要部分：
 
-1. **实时监控模块**：展示当前环境参数和系统状态
-2. **环境控制模块**：提供各子系统的自动/手动控制
-3. **数据分析模块**：提供历史数据查询和分析
-4. **系统设置模块**：提供参数配置和系统维护
+1. **实时监控面板**：展示农业大棚环境实时数据，包括各类传感器数据和设备状态。提供数据可视化展示，支持参数变化趋势图表和警报显示。
+2. **环境控制面板**：提供各环境控制子系统的操作界面，包括通风、加湿、补光、灌溉、CO2控制和遮阳系统的自动/手动控制。
+3. **数据分析中心**：提供历史数据查询、统计分析和趋势预测功能，支持多种图表展示和导出选项。
+4. **系统设置界面**：提供系统参数配置、用户偏好设置和高级选项，支持自定义控制策略和报警阈值。
 
 #### 1.2.2 数据处理层
 
 数据处理层负责系统核心逻辑：
 
-1. **传感器数据上下文**：负责数据生成、处理和分发
-2. **控制系统服务**：实现各子系统的控制逻辑
-3. **时序数据存储服务**：管理数据的存储和检索
+1. **实时监控模块**：负责传感器数据采集、处理和分发，实现数据实时可视化和异常监测。
+2. **环境控制模块**：实现各控制子系统的逻辑，根据环境参数和设定目标，计算控制输出，调节农业大棚环境。
+3. **数据处理与分析**：处理历史数据，提供统计分析、相关性分析和预测分析功能，支持决策优化。
+4. **配置管理模块**：管理系统配置参数，包括控制参数、用户偏好和系统设置，确保配置数据的一致性。
 
 #### 1.2.3 数据存储层
 
 数据存储层实现数据持久化：
 
-1. **内存缓存**：提供高速数据访问
-2. **IndexedDB持久化存储**：提供数据长期保存
-3. **配置数据存储**：保存系统配置参数
+1. **内存缓存**：存储实时数据和临时计算结果，提高系统响应速度。采用多级缓存策略，优化性能。
+2. **本地数据库**：基于IndexedDB实现，存储历史传感器数据、控制记录、报警日志和系统配置。
 
 ### 1.3 控制算法选型设计
 
-系统根据不同子系统的特性选择合适的控制算法：
+系统根据不同控制对象的特性，选择了多种控制算法进行环境调控：
 
-| 子系统 | 控制算法 | 选择理由 |
-|-------|---------|---------|
-| 通风系统 | Smith预测控制 | 系统具有大延迟特性 |
-| 加湿系统 | 模糊控制 | 系统为非线性特性 |
-| 补光系统 | PID控制 | 系统为线性特性，响应快速 |
-| 灌溉系统 | 模糊控制 | 系统为非线性特性 |
-| CO2系统 | PID控制 | 系统为线性特性 |
-| 遮阳系统 | PID控制 | 系统为线性特性 |
+| 控制对象 | 算法选择      | 选择理由                               |
+| -------- | ------------- | -------------------------------------- |
+| 补光系统 | PID控制       | 线性特性明显，经典PID算法足以应对      |
+| 通风系统 | Smith预测控制 | 具有大延迟特性，需要预测控制           |
+| 加湿系统 | 模糊控制      | 非线性特性明显，模糊控制适应性更强     |
+| 灌溉系统 | 模糊控制      | 多参数影响，存在不确定性，适合模糊控制 |
+| CO2系统  | PID控制       | 浓度变化较为线性，PID控制稳定可靠      |
+| 遮阳系统 | Smith预测控制 | 操作与效果之间存在延迟，需要预测控制   |
 
 ### 1.4 数据存储策略设计
 
-系统采用多级数据存储策略，平衡性能与存储空间：
+系统采用多层数据存储策略，平衡性能和存储空间：
 
-| 数据年龄 | 存储间隔 | 存储位置 |
-|---------|---------|---------|
-| 1分钟内 | 每秒 | 内存 + IndexedDB |
-| 1小时内 | 每分钟 | 内存 + IndexedDB |
-| 1天内 | 每30分钟 | 内存 + IndexedDB |
-| 1月内 | 每小时 | 仅IndexedDB |
-| 更旧数据 | - | 自动清理 |
+```mermaid
+graph TD
+    A[原始数据] --> B{数据年龄?}
+    B -->|1小时内| C[原始精度保存]
+    B -->|1天内| D[每分钟采样]
+    B -->|1周内| E[每10分钟采样]
+    B -->|更早| F[每小时采样]
+  
+    C --> G[内存缓存]
+    D --> G
+    G --> H[本地数据库]
+    E --> H
+    F --> H
+```
+
+针对不同时间跨度的数据采用不同的存储精度，最近数据保留更高精度，历史数据进行降采样，平衡存储空间和查询性能。
 
 ### 1.5 组件依赖设计
 
 ```mermaid
 graph TD
-    App --> Layout
-    Layout --> Sidebar
-    Layout --> Header
-    
-    App --> Routes
-    Routes --> Dashboard["Dashboard (实时监控)"]
-    Routes --> EnvironmentControl["EnvironmentControl (环境控制)"]
-    Routes --> DataAnalysis["DataAnalysis (数据分析)"]
-    Routes --> Settings["Settings (系统设置)"]
-    
-    Dashboard --> ParameterCard
-    Dashboard --> SystemStatus
-    
-    EnvironmentControl --> ControlCard
-    EnvironmentControl --> SystemVisualizer
-    
-    DataAnalysis --> TimeSeriesChart
-    DataAnalysis --> AnalysisPanel
-    
-    Settings --> GeneralSettings
-    Settings --> ThresholdSettings
-    
-    App --> Contexts
-    Contexts --> SensorDataContext
-    Contexts --> SettingsContext
-    Contexts --> AlarmContext
+    A[App] --> B[Layout]
+    B --> C[Dashboard]
+    B --> D[ControlPanel]
+    B --> E[DataAnalysis]
+    B --> F[Settings]
+  
+    C --> G[SensorDataContext]
+    D --> G
+    E --> G
+  
+    G --> H[TimeSeriesStorage]
+    G --> I[AlarmService]
+  
+    D --> J[ControllerFactory]
+    J --> K[PIDController]
+    J --> L[FuzzyController]
+    J --> M[SmithController]
+  
+    H --> N[IndexedDBService]
+    I --> N
 ```
 
 ### 1.6 数据流设计
@@ -132,14 +135,14 @@ flowchart LR
     Sensors[传感器] --> SensorContext[SensorDataContext]
     SensorContext --> Monitor[监控显示]
     SensorContext --> Control[控制决策]
-    
+  
     UI[用户界面] --> ControlService[控制系统服务]
     ControlService --> Subsystems[各子系统]
-    
+  
     SensorData[传感器数据] --> Storage[时序数据存储]
     Storage --> Cache[内存缓存]
     Storage --> DB[IndexedDB]
-    
+  
     UISettings[用户界面] --> SettingsContext[设置上下文]
     SettingsContext --> ConfigStorage[配置存储]
 ```
@@ -214,7 +217,7 @@ const SettingsContext = createContext<SettingsContextType>({
 Function shouldStore(timestamp):
     currentTime = getCurrentTime()
     age = currentTime - timestamp
-    
+  
     if age ≤ 60秒 then
         return true
     else if age ≤ 60分钟 then
@@ -282,4 +285,4 @@ interface PredictionService {
 - [数据存储机制](./data-storage-mechanism.md)
 - [控制系统架构](./control-system-architecture.md)
 - [实时监控系统](./real-time-monitoring-system.md)
-- [环境控制子系统](./environmental-control-subsystems.md) 
+- [环境控制子系统](./environmental-control-subsystems.md)

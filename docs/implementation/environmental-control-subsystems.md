@@ -2,7 +2,7 @@
 
 ## 1. 环境控制系统架构
 
-智能温室环境控制系统包含多个子系统，各自负责维持特定环境参数在理想范围内：
+自然生态智慧农业大棚控制系统包含多个子系统，各自负责维持特定环境参数在理想范围内：
 
 1. **通风系统**：控制空气温度和湿度
 2. **加湿系统**：增加空气湿度
@@ -79,7 +79,7 @@ const [systems, setSystems] = useState<{[key: string]: SystemState}>({
 const systemConfigs: {[key: string]: ControlSystem} = {
   ventilation: {
     name: '通风系统',
-    description: '控制温室内空气流通，调节温度和湿度',
+    description: '控制农业大棚内空气流通，调节温度和湿度',
     effects: [
       '降低空气温度',
       '降低空气湿度',
@@ -156,7 +156,7 @@ private getVentilationStatus(data: SensorData): string {
 
 ### 3.3 系统特性
 
-- **延迟特性**：通风对温室环境的影响有明显延迟，需要预测控制
+- **延迟特性**：通风对农业大棚环境的影响有明显延迟，需要预测控制
 - **多参数影响**：同时影响温度、湿度和CO2浓度
 - **功率控制**：通过无级调速风机实现精确控制
 
@@ -400,7 +400,7 @@ private getShadingStatus(data: SensorData): string {
 ### 8.3 系统特性
 
 - **物理调节**：通过遮阳网物理调节光照强度
-- **温度影响**：遮阳同时降低温室内温度
+- **温度影响**：遮阳同时降低大棚内温度
 - **分区控制**：可实现分区遮阳控制
 
 ## 9. 环境控制系统工作流程
@@ -552,4 +552,4 @@ const energySavingMode = (systems: {[key: string]: SystemState}): {[key: string]
   
   return reduced;
 };
-``` 
+```
