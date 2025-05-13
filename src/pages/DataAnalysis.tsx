@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Card, DatePicker, Select, Row, Col, Table, Typography, Alert } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, DatePicker, Select, Row, Col, Table, Typography, Alert, Button, Spin } from 'antd';
 import { Line } from '@ant-design/plots';
 import styled from 'styled-components';
 import dayjs, { Dayjs } from 'dayjs';
 import { parameterConfig } from './Dashboard';
-import { getLatestSensorData, getWarningLogs } from '../services/db';
+import { getSensorDataInTimeRange } from '../services/db';
+import { useSensorData } from '../contexts/SensorDataContext';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -58,45 +59,149 @@ const parameterRelations = {
 } as const;
 
 const DataAnalysis: React.FC = () => {
+  const { getHistoricalData } = useSensorData();
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
-    dayjs().subtract(24, 'hour'),
+    dayjs().subtract(1, 'hour'),
     dayjs()
   ]);
   const [selectedParameter, setSelectedParameter] = useState<string>('airTemperature');
   const [historicalData, setHistoricalData] = useState<any[]>([]);
   const [warningLogs, setWarningLogs] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [refreshInterval, setRefreshInterval] = useState<number | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const timeRange = dateRange[1].valueOf() - dateRange[0].valueOf();
-      const sensorData = await getLatestSensorData(timeRange);
-      setHistoricalData(sensorData);
+      setIsLoading(true);
+      const startTime = dateRange[0].valueOf();
+      const endTime = dateRange[1].valueOf();
       
-      const warnings = await getWarningLogs(timeRange);
+      const sensorData = getHistoricalData(startTime, endTime);
+      
+      const validatedData = sensorData.map(item => ({
+        ...item,
+        timestamp: typeof item.timestamp === 'number' ? item.timestamp : Number(item.timestamp)
+      })).filter(item => !isNaN(item.timestamp));
+      
+      const sampledData = sampleData(validatedData, 200);
+      setHistoricalData(sampledData);
+      
+      const warnings = generateMockWarnings(sampledData, selectedParameter);
       setWarningLogs(warnings);
+      
+      setIsLoading(false);
     } catch (error) {
       console.error('Error loading data:', error);
+      setIsLoading(false);
     }
+  }, [dateRange, getHistoricalData, selectedParameter]);
+
+  const sampleData = (data: any[], maxPoints: number) => {
+    if (!data || data.length === 0) return [];
+    
+    if (data.length <= maxPoints) return data;
+    
+    const step = Math.ceil(data.length / maxPoints);
+    const result = [];
+    
+    for (let i = 0; i < data.length; i += step) {
+      if (data[i] && typeof data[i].timestamp !== 'undefined') {
+        const item = {
+          ...data[i],
+          timestamp: typeof data[i].timestamp === 'number' ? data[i].timestamp : Number(data[i].timestamp)
+        };
+        
+        if (!isNaN(item.timestamp)) {
+          result.push(item);
+        }
+      }
+    }
+    
+    return result;
+  };
+
+  const generateMockWarnings = (data: any[], parameter: string) => {
+    const warnings: Array<{
+      timestamp: number;
+      parameter: string;
+      value: number;
+      threshold: number;
+      message: string;
+      level: string;
+    }> = [];
+    const config = parameterConfig[parameter];
+    
+    data.forEach(item => {
+      if (item[parameter] > config.warningThreshold) {
+        warnings.push({
+          timestamp: item.timestamp,
+          parameter: parameter,
+          value: item[parameter],
+          threshold: config.warningThreshold,
+          message: `${config.name}超过警告阈值`,
+          level: item[parameter] > config.errorThreshold ? 'error' : 'warning',
+        });
+      }
+    });
+    
+    return warnings.slice(0, 10);
   };
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const now = dayjs();
+    const isIncludingNow = dateRange[1].isAfter(now) || dateRange[1].isSame(now);
+    
+    if (isIncludingNow && refreshInterval === null) {
+      const interval = window.setInterval(loadData, 10000);
+      setRefreshInterval(interval);
+    } else if (!isIncludingNow && refreshInterval !== null) {
+      clearInterval(refreshInterval);
+      setRefreshInterval(null);
+    }
+    
+    return () => {
+      if (refreshInterval !== null) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [dateRange, loadData, refreshInterval]);
+
   const config = {
     data: historicalData,
     padding: [20, 20, 50, 40],
     xField: 'timestamp',
     yField: selectedParameter,
-    smooth: false,
-    animation: false,
+    smooth: true,
+    animation: {
+      appear: {
+        duration: 500,
+      },
+    },
     autoFit: true,
     color: parameterConfig[selectedParameter].color,
     xAxis: {
       type: 'time',
       tickCount: 8,
       label: {
-        formatter: (text: string) => dayjs(Number(text)).format('HH:mm')
+        formatter: (text: string) => {
+          const timestamp = typeof text === 'string' ? parseInt(text, 10) : text;
+          
+          if (isNaN(timestamp)) {
+            console.error('Invalid timestamp:', text);
+            return '';
+          }
+          
+          try {
+            return dayjs(timestamp).format('HH:mm:ss');
+          } catch (error) {
+            console.error('Error formatting date:', error, timestamp);
+            return '';
+          }
+        }
       },
       title: {
         text: '时间',
@@ -112,10 +217,11 @@ const DataAnalysis: React.FC = () => {
     },
     tooltip: {
       formatter: (data: any) => {
+        const timestamp = data.timestamp ? data.timestamp : Date.now();
         return {
           name: parameterConfig[selectedParameter].name,
           value: `${Number(data[selectedParameter]).toFixed(1)}${parameterConfig[selectedParameter].unit || ''}`,
-          time: dayjs(data.timestamp).format('YYYY-MM-DD HH:mm:ss'),
+          time: dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss'),
         };
       },
     },
@@ -125,8 +231,28 @@ const DataAnalysis: React.FC = () => {
       style: {
         stroke: '#fff',
         lineWidth: 1,
+        fillOpacity: 1,
       },
     },
+    line: {
+      style: {
+        lineWidth: 2,
+      },
+    },
+    state: {
+      active: {
+        style: {
+          shadowBlur: 4,
+          stroke: '#000',
+          fillOpacity: 0.8,
+        },
+      },
+    },
+    interactions: [
+      {
+        type: 'marker-active',
+      },
+    ],
   };
 
   const calculateStatistics = () => {
@@ -147,19 +273,23 @@ const DataAnalysis: React.FC = () => {
       title: '时间',
       dataIndex: 'timestamp',
       key: 'timestamp',
-      render: (timestamp: number) => dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss'),
+      render: (timestamp: number) => {
+        if (isNaN(timestamp)) return '';
+        return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss');
+      },
     },
     {
       title: '参数',
       dataIndex: 'parameter',
       key: 'parameter',
+      render: (param: string) => parameterConfig[param]?.name || param,
     },
     {
       title: '数值',
       dataIndex: 'value',
       key: 'value',
       render: (value: number, record: any) => 
-        `${value} ${parameterConfig[record.parameter]?.unit || ''}`,
+        `${value.toFixed(2)} ${parameterConfig[record.parameter]?.unit || ''}`,
     },
     {
       title: '消息',
@@ -171,7 +301,7 @@ const DataAnalysis: React.FC = () => {
       dataIndex: 'level',
       key: 'level',
       render: (level: string) => (
-        <Text type={level === 'error' ? 'danger' : 'warning'}>{level}</Text>
+        <Text type={level === 'error' ? 'danger' : 'warning'}>{level === 'error' ? '错误' : '警告'}</Text>
       ),
     },
   ];
@@ -211,7 +341,8 @@ const DataAnalysis: React.FC = () => {
       <Row gutter={16}>
         <Col span={24}>
           <StyledCard>
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
               <Select
                 value={selectedParameter}
                 onChange={setSelectedParameter}
@@ -228,9 +359,33 @@ const DataAnalysis: React.FC = () => {
                     setDateRange([dates[0]!, dates[1]!]);
                   }
                 }}
-              />
+                  showTime
+                  style={{ marginRight: 16 }}
+                />
+                <Button type="primary" onClick={loadData} loading={isLoading}>刷新数据</Button>
+              </div>
+              <div>
+                {refreshInterval !== null && (
+                  <Text type="secondary">已启用自动刷新 (10秒)</Text>
+                )}
+              </div>
             </div>
+            {isLoading ? (
+              <div style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Spin tip="加载数据中..." />
+              </div>
+            ) : historicalData.length > 0 ? (
+              <div style={{ height: 400 }}>
             <Line {...config} />
+              </div>
+            ) : (
+              <Alert
+                message="没有数据"
+                description="所选时间范围内没有数据，请尝试调整时间范围或参数。"
+                type="info"
+                showIcon
+              />
+            )}
           </StyledCard>
         </Col>
       </Row>
@@ -256,13 +411,25 @@ const DataAnalysis: React.FC = () => {
         </Col>
       </Row>
 
-      <StyledCard title="警告记录">
+      <StyledCard 
+        title="警告记录" 
+        extra={warningLogs.length > 0 ? `共 ${warningLogs.length} 条记录` : null}
+      >
+        {warningLogs.length > 0 ? (
         <Table
           dataSource={warningLogs}
           columns={warningColumns}
           rowKey="timestamp"
-          pagination={{ pageSize: 10 }}
+            pagination={{ pageSize: 5 }}
         />
+        ) : (
+          <Alert
+            message="没有警告记录"
+            description="所选时间范围和参数没有触发警告阈值。"
+            type="info"
+            showIcon
+          />
+        )}
       </StyledCard>
     </div>
   );

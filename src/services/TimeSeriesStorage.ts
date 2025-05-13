@@ -35,35 +35,36 @@ class TimeSeriesStorage {
     const currentTime = Date.now();
     const age = currentTime - timestamp;
 
-    // 1分钟内：每秒存储
-    if (age <= 60 * 1000) return true;
-    // 1小时内：每分钟存储
-    if (age <= 60 * 60 * 1000) return timestamp % (60 * 1000) === 0;
-    // 1天内：每30分钟存储
-    if (age <= 24 * 60 * 60 * 1000) return timestamp % (30 * 60 * 1000) === 0;
-    // 1月内：每小时存储
-    if (age <= 30 * 24 * 60 * 60 * 1000) return timestamp % (60 * 60 * 1000) === 0;
+    // 5分钟内：每5秒存储一条数据
+    if (age <= 5 * 60 * 1000) return timestamp % (5 * 1000) === 0;
+    // 1小时内：每30秒存储
+    if (age <= 60 * 60 * 1000) return timestamp % (30 * 1000) === 0;
+    // 1天内：每5分钟存储
+    if (age <= 24 * 60 * 60 * 1000) return timestamp % (5 * 60 * 1000) === 0;
+    // 1月内：每30分钟存储
+    if (age <= 30 * 24 * 60 * 60 * 1000) return timestamp % (30 * 60 * 1000) === 0;
 
     return false;
   }
 
   private maintainDatabaseSize(): void {
     const currentSize = this.calculateDatabaseSize();
-    if (currentSize > this.maxSize) {
-      // 删除最旧的数据，直到大小低于限制
+    
+    // 降低最大数据库大小，以减少内存占用
+    if (currentSize > this.maxSize * 0.8) {
+      // 当数据库大小超过阈值的80%时，删除最旧的20%数据
       const sortedTimestamps = Array.from(this.data.keys()).sort();
-      while (this.calculateDatabaseSize() > this.maxSize && sortedTimestamps.length > 0) {
-        const oldestTimestamp = sortedTimestamps.shift();
-        if (oldestTimestamp) {
-          this.data.delete(oldestTimestamp);
-        }
+      const deleteCount = Math.floor(sortedTimestamps.length * 0.2);
+      
+      for (let i = 0; i < deleteCount && i < sortedTimestamps.length; i++) {
+        this.data.delete(sortedTimestamps[i]);
       }
     }
   }
 
   private calculateDatabaseSize(): number {
-    // 简单估算数据大小
-    return this.data.size * 200; // 假设每条记录约200字节
+    // 估算数据大小，每个数据点约250字节
+    return this.data.size * 250;
   }
 
   public getData(startTime: number, endTime: number): SensorData[] {

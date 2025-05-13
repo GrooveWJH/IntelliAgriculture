@@ -131,10 +131,20 @@ code {
 
 .ant-slider-track {
   background-color: var(--primary-color);
+  transition: width 0.5s ease-in-out;
 }
 
 .ant-slider-handle {
   border-color: var(--primary-color);
+  transition: left 0.5s ease-in-out;
+  box-shadow: none;
+  outline: none !important;
+  border-radius: 50% !important;
+}
+
+.ant-slider-handle::before,
+.ant-slider-handle::after {
+  display: none;
 }
 
 .ant-select-selector {

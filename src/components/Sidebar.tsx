@@ -99,9 +99,9 @@ const Sidebar: React.FC = () => {
       label: '传感器模拟配置',
     },
     {
-      key: '/settings',
-      icon: <SettingOutlined />,
-      label: '系统设置',
+    key: '/settings',
+    icon: <SettingOutlined />,
+    label: '系统设置',
     },
   ];
 

@@ -1,316 +1,821 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Switch, Slider, Typography, Space, Row, Col, Alert, Spin } from 'antd';
-import { parameterConfig } from './Dashboard';
+import { Card, Row, Col, Slider, Button, Typography, Tabs, Switch, Tooltip, Alert, Badge, Form, InputNumber } from 'antd';
+import {
+  RocketOutlined,
+  ThunderboltOutlined,
+  BulbOutlined,
+  CloudOutlined,
+  SettingOutlined,
+  ExperimentOutlined,
+  InfoCircleOutlined,
+  ArrowUpOutlined,
+  PoweroffOutlined,
+  QuestionCircleOutlined
+} from '@ant-design/icons';
+import styled from 'styled-components';
 import { useSensorData } from '../contexts/SensorDataContext';
+import { parameterConfig } from './Dashboard';
 
 const { Title, Text, Paragraph } = Typography;
+const { TabPane } = Tabs;
+
+// 样式组件
+const ControlCard = styled(Card)<{ active: boolean }>`
+  margin-bottom: 16px;
+  border-radius: 8px;
+  height: 100%;
+  transition: all 1.5s ease-in-out;
+  border: 1px solid ${props => props.active ? '#52c41a' : '#f0f0f0'};
+  
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+  
+  .ant-card-head {
+    background-color: ${props => props.active ? 'rgba(82, 196, 26, 0.05)' : 'inherit'};
+    border-bottom: 1px solid ${props => props.active ? '#e6f7e1' : '#f0f0f0'};
+    padding: 16px 24px;
+    transition: all 1.5s ease-in-out;
+  }
+  
+  .ant-card-body {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+  }
+`;
+
+const ControlHeader = styled.div`
+  display: flex;
+  align-items: center;
+`;
+
+const SystemDescription = styled.div`
+  margin-top: 20px;
+  margin-bottom: 20px;
+`;
+
+const SystemIcon = styled.div<{ active: boolean }>`
+  font-size: 24px;
+  margin-right: 16px;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background-color: ${props => props.active ? '#52c41a' : '#f0f2f5'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 1.5s ease-in-out;
+  color: ${props => props.active ? 'white' : 'inherit'};
+`;
+
+const StatusBadge = styled(Badge)`
+  .ant-badge-status-dot {
+    width: 8px;
+    height: 8px;
+  }
+`;
+
+const SliderContainer = styled.div`
+  padding: 0 4px;
+  margin-top: 20px;
+  margin-bottom: 30px;
+  position: relative;
+  
+  .ant-slider {
+    margin: 8px 0;
+  }
+  
+  .ant-slider-rail {
+    height: 10px;
+    background-color: #f0f0f0;
+    border-radius: 5px;
+  }
+  
+  .ant-slider-track {
+    transition: width 0.5s ease-in-out;
+    height: 10px;
+    background-color: #52c41a;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(82, 196, 26, 0.2);
+  }
+  
+  .ant-slider-handle {
+    transition: left 0.5s ease-in-out;
+    width: 20px;
+    height: 20px;
+    margin-top: -5px;
+    background-color: white;
+    border: 2px solid #52c41a;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+  }
+  
+  .power-value-label {
+    position: absolute;
+    bottom: -25px;
+    padding: 2px 8px;
+    background-color: #52c41a;
+    color: white;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: bold;
+    transform: translateX(-50%);
+    transition: left 0.5s ease-in-out, background-color 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 1;
+    white-space: nowrap;
+  }
+`;
+
+const ParameterInfo = styled.div`
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #f0f0f0;
+`;
+
+const StatusInfo = styled.div`
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+`;
+
+const PowerIndicator = styled.div<{ power: number }>`
+  display: flex;
+  align-items: center;
+  margin-top: 20px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  transition: background-color 1.5s ease-in-out, color 1.5s ease-in-out, box-shadow 1.5s ease-in-out;
+  background-color: ${props => {
+    if (props.power === 0) return '#f5f5f5';
+    if (props.power < 30) return 'rgba(82, 196, 26, 0.1)';
+    if (props.power < 70) return 'rgba(250, 173, 20, 0.1)';
+    return 'rgba(245, 34, 45, 0.1)';
+  }};
+  box-shadow: ${props => {
+    if (props.power === 0) return 'none';
+    if (props.power < 30) return '0 0 5px rgba(82, 196, 26, 0.2)';
+    if (props.power < 70) return '0 0 5px rgba(250, 173, 20, 0.2)';
+    return '0 0 5px rgba(245, 34, 45, 0.2)';
+  }};
+  
+  .power-icon {
+    margin-right: 12px;
+    font-size: 16px;
+    transition: color 1.5s ease-in-out;
+    color: ${props => {
+      if (props.power === 0) return '#bfbfbf';
+      if (props.power < 30) return '#52c41a';
+      if (props.power < 70) return '#faad14';
+      return '#f5222d';
+    }};
+  }
+  
+  .power-text {
+    flex: 1;
+  }
+  
+  .power-value {
+    font-weight: 500;
+    font-size: 15px;
+    transition: color 1.5s ease-in-out, transform 0.3s ease;
+    color: ${props => {
+      if (props.power === 0) return '#8c8c8c';
+      if (props.power < 30) return '#52c41a';
+      if (props.power < 70) return '#faad14';
+      return '#f5222d';
+    }};
+  }
+  
+  .control-mode-link {
+    margin-left: 16px;
+    cursor: help;
+    display: inline-flex;
+    align-items: center;
+    color: #1890ff;
+    position: relative;
+    
+    &:hover .hint-text {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
+    .hint-text {
+      position: absolute;
+      top: -20px;
+      left: 0;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      opacity: 0;
+      transform: translateY(5px);
+      transition: all 0.3s ease;
+      pointer-events: none;
+    }
+  }
+`;
+
+const WeatherImpactAlert = styled(Alert)`
+  margin-top: 20px;
+`;
 
 interface ControlSystem {
   name: string;
-  description: string;
-  effects: string[];
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
   type: string;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  controlMode: 'pid' | 'fuzzy' | 'smith';
+  affectsParameters: string[];
 }
 
-const controlSystems: ControlSystem[] = [
+const systems: ControlSystem[] = [
   {
-    name: '通风系统',
-    description: '控制温室内空气流通，调节温度和湿度',
-    effects: [
-      '降低空气温度',
-      '降低空气湿度',
-      '调节CO2浓度'
-    ],
-    min: 0,
-    max: 100,
-    step: 1,
-    unit: '%',
-    type: 'ventilation'
+    name: 'ventilation',
+    type: 'ventilation',
+    title: '通风系统',
+    description: '控制空气流通，降低室内温度和湿度，平衡CO2浓度',
+    icon: <RocketOutlined />,
+    controlMode: 'smith',
+    affectsParameters: ['airTemperature', 'airHumidity', 'co2Level']
   },
   {
-    name: '加湿系统',
-    description: '调节空气湿度，保持适宜的生长环境',
-    effects: [
-      '提高空气湿度',
-      '轻微降低温度'
-    ],
-    min: 0,
-    max: 100,
-    step: 1,
-    unit: '%',
-    type: 'humidification'
+    name: 'heating',
+    type: 'heating',
+    title: '加热系统',
+    description: '提高室内温度，适用于低温环境',
+    icon: <ThunderboltOutlined />,
+    controlMode: 'pid',
+    affectsParameters: ['airTemperature', 'airHumidity']
   },
   {
-    name: '补光系统',
-    description: '在自然光不足时提供补充光照',
-    effects: [
-      '增加光照强度',
-      '影响温度'
-    ],
-    min: 0,
-    max: 100,
-    step: 1,
-    unit: '%',
-    type: 'lighting'
+    name: 'cooling',
+    type: 'cooling',
+    title: '制冷系统',
+    description: '降低室内温度，适用于高温环境',
+    icon: <ThunderboltOutlined />,
+    controlMode: 'pid',
+    affectsParameters: ['airTemperature', 'airHumidity']
   },
   {
-    name: '灌溉系统',
-    description: '控制土壤水分和养分供应',
-    effects: [
-      '调节土壤湿度',
-      '影响土壤温度',
-      '调节EC值'
-    ],
-    min: 0,
-    max: 100,
-    step: 1,
-    unit: '%',
-    type: 'irrigation'
+    name: 'humidification',
+    type: 'humidification',
+    title: '加湿系统',
+    description: '增加空气湿度，适用于干燥环境',
+    icon: <CloudOutlined />,
+    controlMode: 'fuzzy',
+    affectsParameters: ['airHumidity']
   },
   {
-    name: 'CO2补充系统',
-    description: '调节温室内CO2浓度',
-    effects: [
-      '提高CO2浓度'
-    ],
-    min: 0,
-    max: 100,
-    step: 1,
-    unit: '%',
-    type: 'co2'
+    name: 'dehumidification',
+    type: 'dehumidification',
+    title: '除湿系统',
+    description: '降低空气湿度，适用于湿度过高环境',
+    icon: <CloudOutlined />,
+    controlMode: 'fuzzy',
+    affectsParameters: ['airHumidity']
   },
   {
-    name: '遮阳系统',
-    description: '控制阳光辐射强度',
-    effects: [
-      '降低光照强度',
-      '降低温度'
-    ],
-    min: 0,
-    max: 100,
-    step: 1,
-    unit: '%',
-    type: 'shading'
+    name: 'lighting',
+    type: 'lighting',
+    title: '补光系统',
+    description: '提供额外光照，促进植物生长',
+    icon: <BulbOutlined />,
+    controlMode: 'pid',
+    affectsParameters: ['lightIntensity']
+  },
+  {
+    name: 'irrigation',
+    type: 'irrigation',
+    title: '灌溉系统',
+    description: '控制土壤湿度，提供植物生长所需水分',
+    icon: <ExperimentOutlined />,
+    controlMode: 'fuzzy',
+    affectsParameters: ['soilMoisture', 'ec']
+  },
+  {
+    name: 'co2Injection',
+    type: 'co2Injection',
+    title: 'CO2注入系统',
+    description: '增加CO2浓度，促进光合作用',
+    icon: <ExperimentOutlined />,
+    controlMode: 'pid',
+    affectsParameters: ['co2Level']
   }
 ];
 
+// 系统状态类型
 interface SystemState {
-  mode: 'auto' | 'manual';
-  level: number;
-  isAuto: boolean;
+  name: string;
   currentPower: number;
-  type: string;
+  autoMode: boolean;
 }
 
-const calculateSystemLevel = (sensorData: any, systemName: string): number => {
-  if (!sensorData) return 0;
-  
-  switch (systemName) {
-    case '通风系统':
-      // 当温度或湿度超过警戒值时启动
-      const tempFactor = Math.max(0, (sensorData.airTemperature - parameterConfig.airTemperature.warningThreshold) / 5);
-      const humidityFactor = Math.max(0, (sensorData.airHumidity - parameterConfig.airHumidity.warningThreshold) / 10);
-      return Math.min(100, Math.max(tempFactor, humidityFactor) * 100);
+// 初始化系统状态
+const initialSystemStates: Record<string, SystemState> = {};
+systems.forEach(system => {
+  initialSystemStates[system.name] = {
+    name: system.name,
+    currentPower: 0,  // 初始功率为0
+    autoMode: true    // 默认为自动模式
+  };
+});
 
-    case '加湿系统':
-      // 当湿度低于60%时启动
-      const targetHumidity = 60;
-      return sensorData.airHumidity < targetHumidity 
-        ? Math.min(100, (targetHumidity - sensorData.airHumidity) * 5)
-        : 0;
+// 添加自定义的配置选项
+interface ControlSettings {
+  minimumUpdateInterval: number; // 单位为毫秒
+}
 
-    case '补光系统':
-      // 当光照强度低于2000lux时启动
-      const targetLight = 2000;
-      return sensorData.lightIntensity < targetLight
-        ? Math.min(100, ((targetLight - sensorData.lightIntensity) / targetLight) * 100)
-        : 0;
-
-    case '灌溉系统':
-      // 当土壤湿度低于65%时启动
-      const targetSoilMoisture = 65;
-      return sensorData.soilMoisture < targetSoilMoisture
-        ? Math.min(100, (targetSoilMoisture - sensorData.soilMoisture) * 3)
-        : 0;
-
-    case 'CO2补充系统':
-      // 当CO2浓度低于600ppm时启动
-      const targetCO2 = 600;
-      return sensorData.co2Level < targetCO2
-        ? Math.min(100, ((targetCO2 - sensorData.co2Level) / targetCO2) * 100)
-        : 0;
-
-    case '遮阳系统':
-      // 当光照强度超过2500lux时启动
-      return sensorData.lightIntensity > parameterConfig.lightIntensity.warningThreshold
-        ? Math.min(100, ((sensorData.lightIntensity - parameterConfig.lightIntensity.warningThreshold) / 1000) * 100)
-        : 0;
-
-    default:
-      return 0;
-  }
+const defaultControlSettings: ControlSettings = {
+  minimumUpdateInterval: 2000 // 2秒
 };
 
-const calculateSystemPower = (systemState: SystemState, sensorData: any) => {
-  if (!systemState.isAuto) {
-    return systemState.currentPower;
-  }
-
-  const { type } = systemState;
-  switch (type) {
-    case 'ventilation':
-      // 根据温度、湿度和CO2浓度计算通风功率
-      const tempDiff = sensorData.airTemperature - parameterConfig.airTemperature.target;
-      const humidityDiff = sensorData.airHumidity - parameterConfig.airHumidity.target;
-      const co2Diff = sensorData.co2Level - parameterConfig.co2Level.target;
-      
-      if (tempDiff > 2 || humidityDiff > 10 || Math.abs(co2Diff) > 200) {
-        return Math.min(100, Math.max(30, 
-          Math.max(
-            tempDiff > 0 ? tempDiff * 20 : 0,
-            humidityDiff > 0 ? humidityDiff * 5 : 0,
-            Math.abs(co2Diff) > 200 ? 30 : 0
-          )
-        ));
-      }
-      return 0;
-
-    case 'humidification':
-      // 根据湿度差值计算加湿功率
-      const humidityDeficit = parameterConfig.airHumidity.target - sensorData.airHumidity;
-      if (humidityDeficit > 5) {
-        return Math.min(100, humidityDeficit * 8);
-      }
-      return 0;
-
-    case 'lighting':
-      // 根据光照差值计算补光功率
-      const lightDeficit = parameterConfig.lightIntensity.target - sensorData.lightIntensity;
-      if (lightDeficit > 200) {
-        return Math.min(100, (lightDeficit / 20));
-      }
-      return 0;
-
-    case 'irrigation':
-      // 根据土壤湿度差值计算灌溉功率
-      const moistureDeficit = parameterConfig.soilMoisture.target - sensorData.soilMoisture;
-      if (moistureDeficit > 5) {
-        return Math.min(100, moistureDeficit * 10);
-      }
-      return 0;
-
-    case 'co2':
-      // 根据CO2浓度差值计算补充功率
-      const co2Deficit = parameterConfig.co2Level.target - sensorData.co2Level;
-      if (co2Deficit > 50) {
-        return Math.min(100, co2Deficit / 5);
-      }
-      return 0;
-
-    case 'shading':
-      // 根据光照强度计算遮阳功率
-      const excessLight = sensorData.lightIntensity - (parameterConfig.lightIntensity.target * 1.2);
-      if (excessLight > 0) {
-        return Math.min(100, (excessLight / 20));
-      }
-      return 0;
-
-    default:
-      return 0;
+// 控制模式说明
+const controlModeExplanations = {
+  pid: {
+    title: 'PID控制',
+    description: '比例-积分-微分控制器，适用于线性系统，可以快速响应并修正误差。在加热、制冷、补光等系统中表现良好，能够精确维持目标值。',
+    usage: '适用于需要精确控制和快速响应的系统，对持续性误差和突发扰动都有良好抵抗能力。',
+    modifyGuide: '如需修改PID控制参数或更换控制方法，请编辑文件：src/controllers/pidController.ts'
+  },
+  fuzzy: {
+    title: '模糊控制',
+    description: '基于模糊逻辑的控制方法，适合处理复杂的非线性系统和不确定性高的环境。在湿度控制、灌溉等多因素影响的系统中表现更好。',
+    usage: '适用于精确数学模型难以建立，但具有较丰富经验知识的场景，尤其适合多输入多输出系统。',
+    modifyGuide: '如需修改模糊控制规则或更换控制方法，请编辑文件：src/controllers/fuzzyController.ts'
+  },
+  smith: {
+    title: 'Smith预测器',
+    description: 'Smith预测控制适合具有大延迟的系统，通过内部模型预测系统响应，克服传统PID在大延迟系统中的不足。在通风系统中使用，可有效处理空气流动的滞后效应。',
+    usage: '适用于输入变化到输出响应有明显时间延迟的系统，如通风系统中室外空气进入到室内温湿度变化的过程。',
+    modifyGuide: '如需修改Smith预测器参数或更换控制方法，请编辑文件：src/controllers/smithController.ts'
   }
 };
 
 const EnvironmentControl: React.FC = () => {
-  const [masterAutoControl, setMasterAutoControl] = useState(true);
-  const [systems, setSystems] = useState<Record<string, SystemState>>({});
-  const { sensorData, isLoading, error } = useSensorData();
+  const { sensorData, isWeatherDriven, setControlSystemEffect } = useSensorData();
+  const [activeTab, setActiveTab] = useState<string>('1');
+  const [systemStates, setSystemStates] = useState<Record<string, SystemState>>(initialSystemStates);
+  const [controlSettings, setControlSettings] = useState<ControlSettings>(defaultControlSettings);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Record<string, number>>({});
 
-  // 初始化系统状态
+  // 自动控制逻辑 - 根据传感器数据自动调整控制系统
   useEffect(() => {
-    const initialSystems: Record<string, SystemState> = {};
-    controlSystems.forEach(system => {
-      initialSystems[system.name] = {
-        mode: 'auto',
-        level: 0,
-        isAuto: true,
-        currentPower: 0,
-        type: system.type
-      };
-    });
-    setSystems(initialSystems);
-  }, []);
+    if (!sensorData) return;
 
-  // 检查所有子系统状态并同步全自动控制状态
-  useEffect(() => {
-    if (Object.keys(systems).length === 0) return;
+    // 创建新的系统状态对象
+    const newSystemStates = { ...systemStates };
     
-    const allSystemsAuto = Object.values(systems).every(system => system.isAuto);
-    if (masterAutoControl && !allSystemsAuto) {
-      // 如果主控制是开启状态，但有子系统不是自动模式，则同步所有子系统为自动模式
-      const newSystems = { ...systems };
-      Object.keys(newSystems).forEach(systemName => {
-        newSystems[systemName].isAuto = true;
-        newSystems[systemName].mode = 'auto';
-      });
-      setSystems(newSystems);
-    } else if (!masterAutoControl && allSystemsAuto) {
-      // 如果主控制是关闭状态，但所有子系统都是自动模式，则同步主控制状态
-      setMasterAutoControl(true);
-    }
-  }, [systems, masterAutoControl]);
-
-  // 自动控制逻辑
-  useEffect(() => {
-    if (sensorData) {
-      const newSystems = { ...systems };
-      Object.keys(newSystems).forEach(systemName => {
-        if (newSystems[systemName].isAuto) {
-          newSystems[systemName].level = calculateSystemLevel(sensorData, systemName);
-          newSystems[systemName].currentPower = calculateSystemPower(newSystems[systemName], sensorData);
-        }
-      });
-      setSystems(newSystems);
-    }
-  }, [sensorData, systems]);
-
-  const handleSystemAutoChange = (systemName: string, isAuto: boolean) => {
-    setSystems(prev => ({
-      ...prev,
-      [systemName]: {
-        ...prev[systemName],
-        isAuto,
-        mode: isAuto ? 'auto' : 'manual',
-        currentPower: prev[systemName].currentPower
+    // 检查每个系统
+    Object.keys(newSystemStates).forEach(systemName => {
+      // 只在自动模式下调整
+      if (!newSystemStates[systemName].autoMode) return;
+      
+      let newPower = 0;
+      
+      // 根据系统类型和当前环境参数计算功率
+      switch (systemName) {
+        case 'heating':
+          // 如果温度低于目标值，启动加热
+          if (sensorData.airTemperature < parameterConfig.airTemperature.target) {
+            const diff = parameterConfig.airTemperature.target - sensorData.airTemperature;
+            // 每度温差增加20%功率，最高100%
+            newPower = Math.min(100, Math.round(diff * 20));
+  }
+          break;
+          
+        case 'cooling':
+          // 如果温度高于目标值，启动制冷
+          if (sensorData.airTemperature > parameterConfig.airTemperature.target) {
+            const diff = sensorData.airTemperature - parameterConfig.airTemperature.target;
+            // 每度温差增加25%功率，最高100%
+            newPower = Math.min(100, Math.round(diff * 25));
+          }
+          break;
+          
+    case 'ventilation':
+          // 如果CO2浓度过高或湿度过高，启动通风
+          if (sensorData.co2Level > parameterConfig.co2Level.target || 
+              sensorData.airHumidity > parameterConfig.airHumidity.target) {
+            // 计算CO2和湿度差异导致的通风需求
+            const co2Diff = Math.max(0, sensorData.co2Level - parameterConfig.co2Level.target) / 100;
+            const humidityDiff = Math.max(0, sensorData.airHumidity - parameterConfig.airHumidity.target);
+            // 取CO2和湿度两者较大的通风需求
+            newPower = Math.min(100, Math.round(Math.max(co2Diff * 10, humidityDiff * 2)));
       }
-    }));
-  };
+          break;
 
-  const handlePowerChange = (systemName: string, power: number) => {
-    setSystems(prev => ({
-      ...prev,
-      [systemName]: {
-        ...prev[systemName],
-        currentPower: power
+    case 'humidification':
+          // 如果湿度低于目标值，启动加湿
+          if (sensorData.airHumidity < parameterConfig.airHumidity.target) {
+            const diff = parameterConfig.airHumidity.target - sensorData.airHumidity;
+            // 每1%湿度差增加5%功率，最高100%
+            newPower = Math.min(100, Math.round(diff * 5));
+          }
+          break;
+          
+        case 'dehumidification':
+          // 如果湿度高于目标值，启动除湿
+          if (sensorData.airHumidity > parameterConfig.airHumidity.target) {
+            const diff = sensorData.airHumidity - parameterConfig.airHumidity.target;
+            // 每1%湿度差增加6%功率，最高100%
+            newPower = Math.min(100, Math.round(diff * 6));
       }
-    }));
-  };
+          break;
 
-  const handleMasterAutoControl = (checked: boolean) => {
-    const newSystems = { ...systems };
-    Object.keys(newSystems).forEach(systemName => {
-      newSystems[systemName].isAuto = checked;
-      newSystems[systemName].mode = checked ? 'auto' : 'manual';
+    case 'lighting':
+          // 白天且光照不足时才启动补光
+          const hour = new Date().getHours();
+          const isDay = hour >= 6 && hour <= 18;
+          if (isDay && sensorData.lightIntensity < parameterConfig.lightIntensity.target) {
+            const diff = parameterConfig.lightIntensity.target - sensorData.lightIntensity;
+            // 根据光照差异计算功率
+            newPower = Math.min(100, Math.round((diff / parameterConfig.lightIntensity.target) * 100));
+      }
+          break;
+
+    case 'irrigation':
+          // 如果土壤湿度低于目标值，启动灌溉
+          if (sensorData.soilMoisture < parameterConfig.soilMoisture.target) {
+            const diff = parameterConfig.soilMoisture.target - sensorData.soilMoisture;
+            // 每1%湿度差增加4%功率，最高100%
+            newPower = Math.min(100, Math.round(diff * 4));
+      }
+          break;
+
+        case 'co2Injection':
+          // 如果CO2浓度低于目标值，启动CO2注入
+          if (sensorData.co2Level < parameterConfig.co2Level.target) {
+            const diff = parameterConfig.co2Level.target - sensorData.co2Level;
+            // 每100ppm差异增加20%功率，最高100%
+            newPower = Math.min(100, Math.round(diff / 5));
+      }
+          break;
+  }
+      
+      // 检查是否满足最小更新间隔要求
+      const now = Date.now();
+      const lastUpdate = lastUpdateTime[systemName] || 0;
+
+      // 自动模式下，即使功率为0也更新控制效果，只要满足最小更新间隔
+      if ((now - lastUpdate >= controlSettings.minimumUpdateInterval) &&
+          (newPower !== newSystemStates[systemName].currentPower)) {
+        newSystemStates[systemName].currentPower = newPower;
+        // 应用控制效果
+        setControlSystemEffect(systemName, newPower);
+        
+        // 更新最后更新时间
+        setLastUpdateTime(prev => ({
+          ...prev,
+          [systemName]: now
+        }));
+      }
     });
-    setSystems(newSystems);
-    setMasterAutoControl(checked);
+    
+    // 更新系统状态
+    setSystemStates(newSystemStates);
+  }, [sensorData, controlSettings.minimumUpdateInterval]);
+
+  // 更新控制系统功率
+  const handlePowerChange = (system: string, value: number) => {
+    const now = Date.now();
+    const lastUpdate = lastUpdateTime[system] || 0;
+    const isManualMode = !systemStates[system].autoMode;
+    
+    // 手动模式下不受最小更新时间间隔的限制
+    // 自动模式下才检查是否满足最小更新间隔要求
+    if (!isManualMode && now - lastUpdate < controlSettings.minimumUpdateInterval) {
+      return; // 如果在自动模式下且更新太频繁，则忽略此次更新
+    }
+    
+    // 更新系统状态
+    setSystemStates(prev => ({
+      ...prev,
+      [system]: {
+        ...prev[system],
+        currentPower: value
+      }
+    }));
+    
+    // 将控制效果传递给环境模拟系统
+    setControlSystemEffect(system, value);
+    
+    // 更新最后更新时间
+    setLastUpdateTime(prev => ({
+      ...prev,
+      [system]: now
+    }));
   };
 
+  // 切换自动/手动模式
+  const toggleAutoMode = (system: string) => {
+    const currentSystem = systems.find(s => s.name === system);
+    const currentState = systemStates[system];
+    const newAutoMode = !currentState.autoMode;
+    
+    // 更新系统状态
+    setSystemStates(prev => ({
+      ...prev,
+      [system]: {
+        ...prev[system],
+        autoMode: newAutoMode
+      }
+    }));
+    
+    // 如果切换到自动模式，立即计算并应用控制效果
+    if (newAutoMode && sensorData && currentSystem) {
+      let newPower = 0;
+      
+      // 立即计算新的功率值
+      switch (system) {
+        case 'heating':
+          if (sensorData.airTemperature < parameterConfig.airTemperature.target) {
+            const diff = parameterConfig.airTemperature.target - sensorData.airTemperature;
+            newPower = Math.min(100, Math.round(diff * 20));
+          }
+          break;
+          
+        case 'cooling':
+          if (sensorData.airTemperature > parameterConfig.airTemperature.target) {
+            const diff = sensorData.airTemperature - parameterConfig.airTemperature.target;
+            newPower = Math.min(100, Math.round(diff * 25));
+          }
+          break;
+          
+        case 'ventilation':
+          if (sensorData.co2Level > parameterConfig.co2Level.target || 
+              sensorData.airHumidity > parameterConfig.airHumidity.target) {
+            const co2Diff = Math.max(0, sensorData.co2Level - parameterConfig.co2Level.target) / 100;
+            const humidityDiff = Math.max(0, sensorData.airHumidity - parameterConfig.airHumidity.target);
+            newPower = Math.min(100, Math.round(Math.max(co2Diff * 10, humidityDiff * 2)));
+          }
+          break;
+          
+        case 'humidification':
+          if (sensorData.airHumidity < parameterConfig.airHumidity.target) {
+            const diff = parameterConfig.airHumidity.target - sensorData.airHumidity;
+            newPower = Math.min(100, Math.round(diff * 5));
+          }
+          break;
+          
+        case 'dehumidification':
+          if (sensorData.airHumidity > parameterConfig.airHumidity.target) {
+            const diff = sensorData.airHumidity - parameterConfig.airHumidity.target;
+            newPower = Math.min(100, Math.round(diff * 6));
+          }
+          break;
+          
+        case 'lighting':
+          const hour = new Date().getHours();
+          const isDay = hour >= 6 && hour <= 18;
+          if (isDay && sensorData.lightIntensity < parameterConfig.lightIntensity.target) {
+            const diff = parameterConfig.lightIntensity.target - sensorData.lightIntensity;
+            newPower = Math.min(100, Math.round((diff / parameterConfig.lightIntensity.target) * 100));
+          }
+          break;
+          
+        case 'irrigation':
+          if (sensorData.soilMoisture < parameterConfig.soilMoisture.target) {
+            const diff = parameterConfig.soilMoisture.target - sensorData.soilMoisture;
+            newPower = Math.min(100, Math.round(diff * 4));
+          }
+          break;
+          
+        case 'co2Injection':
+          if (sensorData.co2Level < parameterConfig.co2Level.target) {
+            const diff = parameterConfig.co2Level.target - sensorData.co2Level;
+            newPower = Math.min(100, Math.round(diff / 5));
+          }
+          break;
+      }
+      
+      // 立即更新UI状态和环境控制效果
+      setSystemStates(prev => ({
+        ...prev,
+        [system]: {
+          ...prev[system],
+          currentPower: newPower
+        }
+      }));
+      
+      // 应用控制效果到环境模拟系统
+      setControlSystemEffect(system, newPower);
+      
+      // 更新最后更新时间
+      setLastUpdateTime(prev => ({
+        ...prev,
+        [system]: Date.now()
+      }));
+    }
+  };
+
+  // 渲染控制系统卡片
+  const renderControlSystem = (system: ControlSystem) => {
+    const systemState = systemStates[system.name];
+    const isActive = systemState.currentPower > 0;
+    
+    return (
+      <Col xs={24} md={12} xl={8} key={system.name} style={{ marginBottom: 16 }}>
+        <ControlCard
+          active={isActive}
+          title={
+            <ControlHeader>
+              <SystemIcon active={isActive}>{system.icon}</SystemIcon>
+              <div>
+                <Title level={4} style={{ margin: 0 }}>{system.title}</Title>
+                <StatusBadge 
+                  status={isActive ? "processing" : "default"} 
+                  text={
+                    <Text type={isActive ? "success" : "secondary"}>
+                      {isActive ? "运行中" : "待机中"}
+                    </Text>
+                  } 
+                />
+              </div>
+            </ControlHeader>
+          }
+          extra={
+            <Switch
+              checkedChildren="自动"
+              unCheckedChildren="手动"
+              checked={systemState.autoMode}
+              onChange={() => toggleAutoMode(system.name)}
+            />
+          }
+        >
+          <SystemDescription>
+            <Paragraph>{system.description}</Paragraph>
+          </SystemDescription>
+          
+          {system.affectsParameters.length > 0 && (
+            <ParameterInfo>
+              <Text type="secondary">影响参数：</Text>
+              {system.affectsParameters.map((param, index) => (
+                <span key={param}>
+                  {index > 0 && <span>, </span>}
+                  <Text>{parameterConfig[param].name}</Text>
+                </span>
+              ))}
+            </ParameterInfo>
+          )}
+          
+          <SliderContainer>
+            <Slider
+              min={0}
+              max={100}
+              step={1}
+              value={systemState.currentPower}
+              onChange={(value) => handlePowerChange(system.name, value)}
+              disabled={systemState.autoMode} // 在自动模式下禁用滑块
+              tipFormatter={value => `${value}%`}
+            />
+            {systemState.currentPower > 0 && (
+              <div 
+                className="power-value-label" 
+                style={{ 
+                  left: `${systemState.currentPower}%`,
+                  backgroundColor: systemState.currentPower < 30 ? '#52c41a' : 
+                                  systemState.currentPower < 70 ? '#faad14' : '#f5222d'
+                }}
+              >
+                {systemState.currentPower}%
+              </div>
+            )}
+          </SliderContainer>
+          
+          <PowerIndicator power={systemState.currentPower}>
+            <PoweroffOutlined className="power-icon" spin={systemState.currentPower > 0} />
+            <span className="power-text">功率:</span>
+            <span className="power-value">{systemState.currentPower}%</span>
+            <Tooltip 
+              title={getControlModeExplanation(system.controlMode)} 
+              placement="rightTop" 
+              overlayStyle={{ 
+                maxWidth: '480px',
+                minWidth: '450px'
+              }}
+              overlayInnerStyle={{
+                padding: 0
+              }}
+              color="transparent"
+              mouseEnterDelay={0.2}
+              arrowPointAtCenter={true}
+            >
+              <span className="control-mode-link">
+                控制模式: {getControlModeText(system.controlMode)} 
+                <QuestionCircleOutlined style={{ marginLeft: 5, fontSize: '14px' }} />
+                <span className="hint-text">点击查看详情</span>
+              </span>
+            </Tooltip>
+          </PowerIndicator>
+          
+          <StatusInfo>
+            <Text type="secondary">
+              {getCurrentStatus(system)}
+            </Text>
+          </StatusInfo>
+          
+          {isWeatherDriven && systemState.currentPower > 0 && (
+            <WeatherImpactAlert
+              message="天气影响"
+              description={getWeatherImpactText(system)}
+              type="info"
+              showIcon
+            />
+          )}
+        </ControlCard>
+      </Col>
+    );
+  };
+
+  // 获取控制模式文本
+  const getControlModeText = (mode: string) => {
+    switch (mode) {
+      case 'pid':
+        return 'PID控制';
+      case 'fuzzy':
+        return '模糊控制';
+      case 'smith':
+        return 'Smith预测';
+      default:
+        return mode;
+    }
+  };
+
+  // 获取控制模式解释
+  const getControlModeExplanation = (mode: string) => {
+    if (mode in controlModeExplanations) {
+      const explanation = controlModeExplanations[mode as keyof typeof controlModeExplanations];
+      return (
+        <div style={{ 
+          padding: '16px', 
+          backgroundColor: '#2a2a2a', 
+          color: '#fff',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+        }}>
+          <div style={{ 
+            fontSize: '20px', 
+            fontWeight: 'bold', 
+            borderBottom: '1px solid #555', 
+            paddingBottom: '12px', 
+            marginBottom: '12px', 
+            color: '#1890ff' 
+          }}>
+            {explanation.title}
+          </div>
+          
+          <div style={{ 
+            marginBottom: '16px', 
+            lineHeight: '1.8',
+            fontSize: '15px',
+            color: 'rgba(255, 255, 255, 0.95)'
+          }}>
+            {explanation.description}
+          </div>
+          
+          <div style={{ 
+            background: 'rgba(255, 255, 255, 0.1)', 
+            padding: '12px 16px', 
+            borderRadius: '6px', 
+            marginBottom: '16px',
+            border: '1px solid rgba(255, 255, 255, 0.2)'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#faad14', fontSize: '15px' }}>
+              使用场景：
+            </div>
+            <div style={{ color: 'rgba(255, 255, 255, 0.9)', lineHeight: '1.7' }}>
+              {explanation.usage}
+            </div>
+          </div>
+          
+          <div style={{ 
+            background: 'rgba(24, 144, 255, 0.15)', 
+            padding: '12px 16px', 
+            borderRadius: '6px',
+            borderLeft: '4px solid #1890ff'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#1890ff', fontSize: '15px' }}>
+              修改指引：
+            </div>
+            <div style={{ color: 'rgba(255, 255, 255, 0.9)', lineHeight: '1.7' }}>
+              {explanation.modifyGuide}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return '未知控制模式';
+  };
+
+  // 获取当前系统状态文本
   const getCurrentStatus = (system: ControlSystem) => {
-    const systemState = systems[system.name];
+    const systemState = systemStates[system.name];
     if (!systemState || systemState.currentPower === 0) {
       return "系统待机中 - 当前环境参数在理想范围内";
     }
@@ -329,11 +834,20 @@ const EnvironmentControl: React.FC = () => {
         }
         return `正在调节空气流通 - 维持CO2浓度平衡（功率：${systemState.currentPower.toFixed(1)}%）`;
         
+      case 'heating':
+        return `正在加热 - 目标温度${parameterConfig.airTemperature.target.toFixed(1)}°C（当前${sensorData.airTemperature.toFixed(1)}°C）`;
+        
+      case 'cooling':
+        return `正在制冷 - 目标温度${parameterConfig.airTemperature.target.toFixed(1)}°C（当前${sensorData.airTemperature.toFixed(1)}°C）`;
+        
       case 'humidification':
         if (sensorData.airHumidity < parameterConfig.airHumidity.target) {
           return `正在加湿 - 目标湿度${parameterConfig.airHumidity.target.toFixed(1)}%（当前${sensorData.airHumidity.toFixed(1)}%）`;
         }
         return "系统待机中 - 当前湿度适宜";
+        
+      case 'dehumidification':
+        return `正在除湿 - 目标湿度${parameterConfig.airHumidity.target.toFixed(1)}%（当前${sensorData.airHumidity.toFixed(1)}%）`;
         
       case 'lighting':
         if (sensorData.lightIntensity < parameterConfig.lightIntensity.target) {
@@ -347,175 +861,153 @@ const EnvironmentControl: React.FC = () => {
         }
         return "系统待机中 - 土壤水分充足";
         
-      case 'co2':
-        if (sensorData.co2Level < parameterConfig.co2Level.target) {
-          return `正在补充CO2 - 目标浓度${parameterConfig.co2Level.target.toFixed(1)}ppm（当前${sensorData.co2Level.toFixed(1)}ppm）`;
-        }
-        return "系统待机中 - CO2浓度适宜";
-        
-      case 'shading':
-        if (sensorData.lightIntensity > parameterConfig.lightIntensity.target * 1.2) {
-          return `正在遮阳 - 降低光照强度至${parameterConfig.lightIntensity.target.toFixed(1)}lux（当前${sensorData.lightIntensity.toFixed(1)}lux）`;
-        }
-        return "系统待机中 - 光照强度适宜";
+      case 'co2Injection':
+        return `正在注入CO2 - 目标CO2浓度${parameterConfig.co2Level.target.toFixed(1)}ppm（当前${sensorData.co2Level.toFixed(1)}ppm）`;
         
       default:
-        return "系统待机中";
+        return `系统正在运行 - 功率${systemState.currentPower}%`;
     }
   };
 
-  const renderControlSystem = (system: ControlSystem) => {
-    const systemState = systems[system.name];
+  // 获取天气影响文本
+  const getWeatherImpactText = (system: ControlSystem) => {
+    if (!sensorData || !sensorData.weather) {
+      return "无天气数据";
+    }
     
+    switch (system.type) {
+      case 'ventilation':
+        if (sensorData.weather === '大雨' || sensorData.weather === '中雨') {
+          return "当前降雨较强，通风效率降低，湿度控制难度增加。";
+        } else if (sensorData.outdoorTemperature && sensorData.outdoorTemperature > sensorData.airTemperature) {
+          return `室外温度高于室内${(sensorData.outdoorTemperature - sensorData.airTemperature).toFixed(1)}°C，通风将导致室内温度上升。`;
+        } else if (sensorData.outdoorTemperature) {
+          return `室外温度低于室内${(sensorData.airTemperature - sensorData.outdoorTemperature).toFixed(1)}°C，通风有助于降温。`;
+        }
+        return "正常通风中，保持空气流通。";
+        
+      case 'heating':
+        if (sensorData.weather === '晴天') {
+          return "晴天阳光充足，加热需求降低。";
+        } else if (sensorData.weather === '阴天' || sensorData.weather === '多云') {
+          return "光照不足，加热系统需提供额外热量。";
+        } else if (sensorData.weather.includes('雨')) {
+          return "雨天环境温度较低，加热需求增加。";
+        }
+        return "正常加热中，维持室内温度。";
+        
+      case 'cooling':
+        if (sensorData.weather === '晴天') {
+          return "晴天阳光强烈，制冷需求增加。";
+        } else if (sensorData.weather === '阴天' || sensorData.weather === '多云') {
+          return "光照不强，制冷需求降低。";
+        } else if (sensorData.weather.includes('雨')) {
+          return "雨天环境温度较低，制冷需求降低。";
+        }
+        return "正常制冷中，维持室内温度。";
+        
+      case 'lighting':
+        if (sensorData.weather === '晴天') {
+          return "晴天光照充足，补光需求较低。";
+        } else if (sensorData.weather === '多云') {
+          return "多云天气，光照间歇性不足，补光系统辅助提供光照。";
+        } else if (sensorData.weather === '阴天' || sensorData.weather.includes('雨')) {
+          return "光照不足，补光系统全力运行以提供植物所需光照。";
+        }
+        return "正常补光中，确保植物光合作用。";
+        
+      default:
+        return `当前天气：${sensorData.weather}，系统正常运行。`;
+    }
+  };
+
+  // 在渲染控制系统组件末尾添加控制设置选项
+  const renderControlSettings = () => {
     return (
-      <Col xs={24} md={12} key={system.name} style={{ marginBottom: 16 }}>
-        <Card 
-          title={system.name}
-          style={{ 
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-          bodyStyle={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%'
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <Text style={{ 
-              color: 'rgba(0, 0, 0, 0.65)', 
-              fontSize: '14px', 
-              marginBottom: '16px'
-            }}>
-              {system.description}
+      <Card title="控制设置" style={{ marginBottom: 16 }}>
+        <Form layout="horizontal">
+          <Form.Item 
+            label="最小更新间隔" 
+            tooltip="设备控制命令的最小发送间隔，较高的值可减少系统负担"
+          >
+            <InputNumber 
+              min={500} 
+              max={10000} 
+              step={100} 
+              value={controlSettings.minimumUpdateInterval}
+              onChange={(value) => {
+                if (value) {
+                  setControlSettings(prev => ({
+                    ...prev,
+                    minimumUpdateInterval: value
+                  }));
+                }
+              }}
+              addonAfter="毫秒"
+              style={{ width: '180px' }}
+            />
+            <Text type="secondary" style={{ marginLeft: 8 }}>
+              （建议：2000毫秒以上）
             </Text>
-            
-            <div style={{ marginBottom: '16px' }}>
-              <Text>影响效果：</Text>
-              <ul style={{ 
-                margin: '8px 0 16px 20px', 
-                padding: 0,
-                minHeight: '80px'  // 确保效果列表区域高度一致
-              }}>
-                {system.effects.map((effect, index) => (
-                  <li key={index}>{effect}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <div style={{ 
-                marginBottom: '16px', 
-                display: 'flex', 
-                alignItems: 'center',
-                height: '32px'  // 固定控制模式区域高度
-              }}>
-                <Text>控制模式：</Text>
-                <Switch
-                  checked={masterAutoControl || systemState?.isAuto}
-                  onChange={(checked) => handleSystemAutoChange(system.name, checked)}
-                  disabled={masterAutoControl}
-                  style={{ marginLeft: 8 }}
-                />
-                <Text style={{ marginLeft: 8 }}>
-                  {(masterAutoControl || systemState?.isAuto) ? '自动' : '手动'}
-                </Text>
-              </div>
-
-              <div style={{ 
-                marginBottom: '16px', 
-                display: 'flex', 
-                alignItems: 'center',
-                height: '32px'  // 固定滑块区域高度
-              }}>
-                <Text>运行功率：</Text>
-                <div style={{ flex: 1, margin: '0 12px' }}>
-                  <Slider
-                    value={systemState?.currentPower}
-                    onChange={(value) => handlePowerChange(system.name, value)}
-                    disabled={masterAutoControl || systemState?.isAuto}
-                    min={system.min}
-                    max={system.max}
-                    step={system.step}
-                  />
-                </div>
-                <Text style={{ minWidth: '48px' }}>
-                  {systemState?.currentPower}%
-                </Text>
-              </div>
-            </div>
-
-            <Text style={{ 
-              color: '#1890ff', 
-              fontSize: '14px', 
-              marginTop: 'auto',
-              fontStyle: 'italic',
-              height: '32px',  // 固定状态文本区域高度
-              display: 'flex',
-              alignItems: 'center'
-            }}>
-              {getCurrentStatus(system)}
-            </Text>
-          </div>
+          </Form.Item>
+        </Form>
         </Card>
-      </Col>
     );
   };
 
   return (
     <div>
-      <Space direction="vertical" style={{ width: '100%' }}>
-        {error ? (
-          <Alert message="数据加载错误" type="error" showIcon />
-        ) : (
-          <>
-            <Card>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-                  <Switch
-                    checked={masterAutoControl}
-                    onChange={handleMasterAutoControl}
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text strong>智能全自动控制</Text>
-                </div>
-                {isLoading ? (
-                  <div style={{ textAlign: 'center', padding: '20px' }}>
-                    <Spin />
-                  </div>
-                ) : null}
-              </Space>
-            </Card>
+      <Title level={2}>环境控制系统</Title>
             
             <Alert
-              message="智能控制系统说明"
-              description={
-                <div>
-                  <Paragraph>
-                    系统支持两种控制模式：
-                    <ul>
-                      <li><Text strong>自动模式：</Text>系统根据环境参数自动调节各个子系统的运行状态，实现最优环境控制。</li>
-                      <li><Text strong>手动模式：</Text>可以手动调节各个子系统的运行参数，适用于特殊情况下的人工干预。</li>
-                    </ul>
-                  </Paragraph>
-                  <Paragraph>
-                    <Text type="warning"><strong>注意：当任何子系统切换到手动模式时，智能控制将自动关闭。重新开启智能控制后，所有子系统将恢复到自动模式。</strong></Text>
-                  </Paragraph>
-                </div>
-              }
+        message="控制系统优化"
+        description="系统已优化：在自动模式下，控制器会根据环境参数和目标值之间的差异自动调整设备功率，不再通过开关状态控制。系统会实时计算所需功率并将控制指令传递给设备执行。"
+        type="success"
+        showIcon
+        style={{ marginBottom: 16 }}
+        closable
+      />
+      
+      {isWeatherDriven && (
+        <Alert
+          message="天气数据驱动模式已启用"
+          description="系统当前使用天气数据驱动环境模拟。控制系统对环境的影响将考虑外部天气因素。"
               type="info"
               showIcon
-              style={{ marginBottom: 24 }}
+          style={{ marginBottom: 16 }}
             />
-            
-            <Row gutter={[16, 16]}>
-              {controlSystems.map(system => renderControlSystem(system))}
+      )}
+      
+      {renderControlSettings()}
+      
+      <Tabs activeKey={activeTab} onChange={setActiveTab}>
+        <TabPane tab="全部系统" key="1">
+          <Row gutter={16}>
+            {systems.map(system => renderControlSystem(system))}
+          </Row>
+        </TabPane>
+        <TabPane tab="温度控制" key="2">
+          <Row gutter={16}>
+            {systems
+              .filter(system => ['ventilation', 'heating', 'cooling'].includes(system.name))
+              .map(system => renderControlSystem(system))}
+          </Row>
+        </TabPane>
+        <TabPane tab="湿度控制" key="3">
+          <Row gutter={16}>
+            {systems
+              .filter(system => ['humidification', 'dehumidification', 'irrigation'].includes(system.name))
+              .map(system => renderControlSystem(system))}
+          </Row>
+        </TabPane>
+        <TabPane tab="光照与空气" key="4">
+          <Row gutter={16}>
+            {systems
+              .filter(system => ['lighting', 'co2Injection'].includes(system.name))
+              .map(system => renderControlSystem(system))}
             </Row>
-          </>
-        )}
-      </Space>
+        </TabPane>
+      </Tabs>
     </div>
   );
 };

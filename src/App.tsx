@@ -55,11 +55,6 @@ const StyledContent = styled(Content)`
 `;
 
 const App: React.FC = () => {
-  const handleAddInterference = (values: any) => {
-    // 处理添加干扰的逻辑
-    console.log('Adding interference:', values);
-  };
-
   return (
     <SensorDataProvider>
       <StyledLayout>
@@ -69,7 +64,7 @@ const App: React.FC = () => {
         <StyledContent>
           <div className="content-container">
             <NotificationPanel />
-            <InterferencePanel onAddInterference={handleAddInterference} />
+            <InterferencePanel />
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/control" element={<EnvironmentControl />} />
