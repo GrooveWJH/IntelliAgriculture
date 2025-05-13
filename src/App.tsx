@@ -11,6 +11,7 @@ import NotificationPanel from './components/NotificationPanel';
 import InterferencePanel from './components/InterferencePanel';
 import { SensorDataProvider } from './contexts/SensorDataContext';
 import Settings from './pages/Settings';
+import ConfigurationPage from './pages/ConfigurationPage';
 
 // Import antd styles
 import 'antd/dist/reset.css';
@@ -75,6 +76,7 @@ const App: React.FC = () => {
               <Route path="/alarm" element={<AlarmSettings />} />
               <Route path="/analysis" element={<DataAnalysis />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/configuration" element={<ConfigurationPage />} />
             </Routes>
           </div>
         </StyledContent>

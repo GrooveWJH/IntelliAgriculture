@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { timeSeriesStorage } from '../services/TimeSeriesStorage';
+import { 
+  generateSensorData, 
+  defaultWaveConfig, 
+  SensorWaveConfig, 
+  setTimeOffset,
+  generateSensorDataSeries 
+} from '../utils/sensorDataGenerator';
 
 // 定义传感器数据类型
 export interface SensorData {
@@ -14,6 +21,7 @@ export interface SensorData {
   ec: number;
 }
 
+// 定义上下文类型
 interface SensorDataContextType {
   sensorData: SensorData | null;
   isLoading: boolean;
@@ -26,6 +34,9 @@ interface SensorDataContextType {
     newestData: number;
   };
   cleanupOldData: (beforeTimestamp: number) => void;
+  setWaveConfig: (config: SensorWaveConfig) => void;
+  currentWaveConfig: SensorWaveConfig;
+  setSimulationTimeOffset: (offset: number) => void;
 }
 
 const SensorDataContext = createContext<SensorDataContextType>({
@@ -40,33 +51,22 @@ const SensorDataContext = createContext<SensorDataContextType>({
     newestData: 0,
   }),
   cleanupOldData: () => {},
+  setWaveConfig: () => {},
+  currentWaveConfig: defaultWaveConfig,
+  setSimulationTimeOffset: () => {}
 });
-
-// 模拟传感器数据生成
-const generateSensorData = (): SensorData => {
-  return {
-    timestamp: Date.now(),
-    airTemperature: Number((20 + Math.random() * 10).toFixed(2)),
-    airHumidity: Number((60 + Math.random() * 20).toFixed(2)),
-    soilMoisture: Number((70 + Math.random() * 15).toFixed(2)),
-    soilTemperature: Number((18 + Math.random() * 8).toFixed(2)),
-    co2Level: Number((400 + Math.random() * 200).toFixed(2)),
-    lightIntensity: Number((2000 + Math.random() * 1000).toFixed(2)),
-    soilPH: Number((6.5 + Math.random()).toFixed(2)),
-    ec: Number((1.2 + Math.random() * 0.5).toFixed(2)),
-  };
-};
 
 export const SensorDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [sensorData, setSensorData] = useState<SensorData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [waveConfig, setWaveConfig] = useState<SensorWaveConfig>(defaultWaveConfig);
 
   // 每秒更新数据
   useEffect(() => {
     const updateInterval = setInterval(() => {
       try {
-        const newData = generateSensorData();
+        const newData = generateSensorData(waveConfig);
         timeSeriesStorage.addData(newData);
         setSensorData(newData);
         setIsLoading(false);
@@ -76,10 +76,17 @@ export const SensorDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, 1000);
 
     return () => clearInterval(updateInterval);
-  }, []);
+  }, [waveConfig]);
 
   const getHistoricalData = (startTime: number, endTime: number): SensorData[] => {
-    return timeSeriesStorage.getData(startTime, endTime);
+    const storedData = timeSeriesStorage.getData(startTime, endTime);
+    
+    // 如果没有存储的数据，生成模拟数据
+    if (storedData.length === 0) {
+      return generateSensorDataSeries(startTime, endTime, 60000, waveConfig);
+    }
+    
+    return storedData;
   };
 
   const getStorageStats = () => {
@@ -90,6 +97,14 @@ export const SensorDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     timeSeriesStorage.cleanupDataBefore(beforeTimestamp);
   };
 
+  const handleSetWaveConfig = (config: SensorWaveConfig) => {
+    setWaveConfig(config);
+  };
+
+  const handleSetTimeOffset = (offset: number) => {
+    setTimeOffset(offset);
+  };
+
   return (
     <SensorDataContext.Provider 
       value={{ 
@@ -98,7 +113,10 @@ export const SensorDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         error,
         getHistoricalData,
         getStorageStats,
-        cleanupOldData
+        cleanupOldData,
+        setWaveConfig: handleSetWaveConfig,
+        currentWaveConfig: waveConfig,
+        setSimulationTimeOffset: handleSetTimeOffset
       }}
     >
       {children}

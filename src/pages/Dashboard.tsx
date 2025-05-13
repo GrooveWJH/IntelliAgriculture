@@ -148,20 +148,6 @@ export const parameterConfig: Record<string, ParameterConfig> = {
   },
 };
 
-// 模拟传感器数据生成
-const generateSensorData = () => {
-  return {
-    airTemperature: formatNumber(20 + Math.random() * 10),
-    airHumidity: formatNumber(60 + Math.random() * 20),
-    soilMoisture: formatNumber(70 + Math.random() * 15),
-    soilTemperature: formatNumber(18 + Math.random() * 8),
-    co2Level: formatNumber(400 + Math.random() * 200),
-    lightIntensity: formatNumber(2000 + Math.random() * 1000),
-    soilPH: formatNumber(6.5 + Math.random()),
-    ec: formatNumber(1.2 + Math.random() * 0.5),
-  };
-};
-
 const renderChart = (parameter: keyof Omit<SensorData, 'timestamp'>, historicalData: SensorData[]) => {
   const values = historicalData.map(item => Number(item[parameter]));
   const minValue = Math.min(...values);

@@ -8,6 +8,7 @@ import {
   LineChartOutlined,
   SettingOutlined,
   FundOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons';
 import styled from 'styled-components';
 
@@ -91,11 +92,18 @@ const Sidebar: React.FC = () => {
     },
   ];
 
-  const settingsMenuItem = {
-    key: '/settings',
-    icon: <SettingOutlined />,
-    label: '系统设置',
-  };
+  const settingsMenuItems = [
+    {
+      key: '/configuration',
+      icon: <ExperimentOutlined />,
+      label: '传感器模拟配置',
+    },
+    {
+      key: '/settings',
+      icon: <SettingOutlined />,
+      label: '系统设置',
+    },
+  ];
 
   return (
     <SidebarContainer>
@@ -115,7 +123,7 @@ const Sidebar: React.FC = () => {
           theme="dark"
           mode="inline"
           selectedKeys={[location.pathname]}
-          items={[settingsMenuItem]}
+          items={settingsMenuItems}
           onClick={({ key }) => navigate(key)}
         />
       </MenuContainer>
