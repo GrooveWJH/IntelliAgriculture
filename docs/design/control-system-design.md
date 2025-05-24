@@ -14,7 +14,10 @@
   - [2.1.4.1 通风系统控制](#2141-通风系统控制)
   - [2.1.4.2 加湿系统控制](#2142-加湿系统控制)
   - [2.1.4.3 补光系统控制](#2143-补光系统控制)
+  - [2.1.4.4 加热系统控制](#2144-加热系统控制)
+  - [2.1.4.5 制冷系统控制](#2145-制冷系统控制)
 - [2.1.5 控制系统集成](#215-控制系统集成)
+- [2.1.6 控制系统与环境模拟交互](#216-控制系统与环境模拟交互)
 
 ## 相关文档
 - [系统概述](../overview/system-overview.md)
@@ -35,32 +38,38 @@ graph TD
     A --> D[补光系统控制器]
     A --> E[灌溉系统控制器]
     A --> F[CO2补充控制器]
-    A --> G[遮阳系统控制器]
+    A --> G[加热系统控制器]
+    A --> H[制冷系统控制器]
     
     B --> B1[Smith预测控制算法]
     C --> C1[模糊控制算法]
     D --> D1[PID控制算法]
     E --> E1[模糊控制算法]
     F --> F1[PID控制算法]
-    G --> G1[Smith预测控制算法]
+    G --> G1[PID控制算法]
+    H --> H1[PID控制算法]
     
-    H[传感器数据] --> A
-    A --> I[执行器命令]
+    I[传感器数据] --> A
+    A --> J[执行器命令]
+    J --> K[环境模拟引擎]
+    K --> I
 ```
 
-控制系统的基本工作流程遵循"感知-决策-执行"模式：
+控制系统的基本工作流程遵循"感知-决策-执行-反馈"模式：
 
 ```mermaid
 sequenceDiagram
     participant S as 传感器/模拟器
     participant C as 控制系统
     participant A as 执行设备
+    participant E as 环境模拟引擎
     
     loop 控制周期
         S->>C: 环境参数数据
         C->>C: 计算控制决策
         C->>A: 发送控制命令
-        A->>S: 影响环境参数
+        A->>E: 控制效果输入
+        E->>S: 更新环境参数
     end
 ```
 
@@ -94,6 +103,8 @@ $$u(t) = K_p e(t) + K_i \int_{0}^{t} e(\tau) d\tau + K_d \frac{de(t)}{dt}$$
 **适用子系统**：
 - **补光系统**：光照强度与控制输出呈线性关系
 - **CO2补充系统**：CO2浓度变化相对线性且响应较快
+- **加热系统**：温度上升与加热功率呈较为线性关系
+- **制冷系统**：温度下降与制冷功率呈较为线性关系
 
 #### 实现方式
 
@@ -253,7 +264,6 @@ graph LR
 
 **适用子系统**：
 - **通风系统**：操作执行到温湿度变化之间存在明显延迟
-- **遮阳系统**：遮阳操作与温度光照效果之间有较长响应延迟
 
 #### 实现方式
 
@@ -303,7 +313,8 @@ class SmithController implements Controller {
 | 加湿系统 | 模糊控制 | 非线性特性明显，多因素影响 | 湿度偏差、温度 |
 | 灌溉系统 | 模糊控制 | 多参数综合影响，存在不确定性 | 土壤湿度、蒸发率 |
 | CO2系统 | PID控制 | 浓度变化较为线性，可精确控制 | CO2浓度、光照强度 |
-| 遮阳系统 | Smith预测控制 | 操作与效果之间存在延迟 | 光照强度、温度趋势 |
+| 加热系统 | PID控制 | 温度上升变化较为线性，需精确控制 | 温度偏差、目标温度 |
+| 制冷系统 | PID控制 | 温度下降控制较为线性，需精确控制 | 温度偏差、室外温度 |
 
 ## 2.1.4 子系统控制实现
 
@@ -408,6 +419,60 @@ calculateLightingControl(sensorData: SensorData): SystemOutput {
 }
 ```
 
+### 2.1.4.4 加热系统控制
+
+加热系统使用PID控制器，在温度过低时提供暖气加热。
+
+```typescript
+calculateHeatingControl(sensorData: SensorData): SystemOutput {
+  const controller = this.controllers.get('heating');
+  
+  // 计算温度误差
+  const error = environmentConfig.airTemperature.target - sensorData.airTemperature;
+  
+  // 只在温度低于目标值时加热
+  const power = error > 0 ? controller.calculate(environmentConfig.airTemperature.target, sensorData.airTemperature) : 0;
+  
+  // 根据温差调整功率
+  const adjustedPower = Math.min(100, power * (1 + Math.abs(error) / 10));
+  
+  return {
+    power: adjustedPower,
+    status: this.getHeatingStatus(sensorData),
+    controlMode: 'pid'
+  };
+}
+```
+
+### 2.1.4.5 制冷系统控制
+
+制冷系统使用PID控制器，在温度过高时提供降温。
+
+```typescript
+calculateCoolingControl(sensorData: SensorData): SystemOutput {
+  const controller = this.controllers.get('cooling');
+  
+  // 计算温度误差（温度高于目标值为正）
+  const error = sensorData.airTemperature - environmentConfig.airTemperature.target;
+  
+  // 只在温度高于目标值时制冷
+  const power = error > 0 ? controller.calculate(environmentConfig.airTemperature.target, sensorData.airTemperature) : 0;
+  
+  // 考虑室外温度因素
+  const outdoorTempFactor = sensorData.outdoorTemperature ? 
+    Math.max(0.5, Math.min(1.5, (sensorData.outdoorTemperature - environmentConfig.airTemperature.target) / 10 + 1)) : 1;
+  
+  // 调整制冷功率
+  const adjustedPower = Math.min(100, power * outdoorTempFactor);
+  
+  return {
+    power: adjustedPower,
+    status: this.getCoolingStatus(sensorData),
+    controlMode: 'pid'
+  };
+}
+```
+
 ## 2.1.5 控制系统集成
 
 系统将各子系统控制器集成到统一的控制框架中，实现协调控制：
@@ -418,6 +483,7 @@ sequenceDiagram
     participant CS as ControlSystem
     participant CT as ControllerFactory
     participant SD as SensorDataContext
+    participant ES as EnvironmentSimulation
     
     App->>SD: 获取传感器数据
     SD->>App: 返回最新数据
@@ -431,7 +497,47 @@ sequenceDiagram
     
     CS->>App: 返回控制决策
     App->>CS: applyControl(controlOutputs)
-    CS->>SD: 更新模拟环境
+    CS->>ES: setControlSystemEffect(system, power)
+    ES->>SD: 更新环境参数
 ```
 
-通过这种集成方式，系统能够根据不同环境参数的特性，选择最适合的控制算法，实现精确、稳定的环境控制。 
+## 2.1.6 控制系统与环境模拟交互
+
+控制系统与环境模拟引擎紧密交互，形成完整的反馈闭环系统。环境模拟引擎支持两种模式，每种模式都与控制系统有特定的交互方式：
+
+### 传统波形模式交互
+
+```mermaid
+flowchart TD
+    A[用户操作] -->|调整功率| B[控制系统]
+    B -->|功率百分比| C[环境模拟引擎]
+    C -->|修改波形参数| D[传统波形生成]
+    D -->|生成环境数据| E[SensorDataContext]
+    E -->|环境参数| B
+```
+
+在传统波形模式下：
+1. 控制系统的功率设置直接影响波形模拟参数
+2. 每种控制参数（温度、湿度等）都根据控制系统输出进行独立调整
+3. 各参数之间关联较弱，主要遵循预设的波形变化规律
+
+### 天气驱动模式交互
+
+```mermaid
+flowchart TD
+    A[用户操作] -->|调整功率| B[控制系统]
+    F[天气数据] -->|外部条件| C[环境模拟引擎]
+    B -->|功率百分比| C
+    C -->|基于热力学计算| G[物理模型]
+    G -->|考虑历史状态| H[环境状态更新]
+    H -->|生成环境数据| E[SensorDataContext]
+    E -->|环境参数| B
+```
+
+在天气驱动模式下：
+1. 控制系统的功率设置直接影响物理模型中的热量、湿度等变化率
+2. 物理模型考虑上一时刻状态，确保温度等参数变化平滑连续
+3. 各参数之间存在物理关联，例如温度影响湿度蒸发
+4. 环境变化更符合实际物理规律，控制效果更加真实
+
+这种双模交互设计不仅提高了系统的仿真精度，也为操作员培训和控制策略验证提供了可靠的测试环境。 

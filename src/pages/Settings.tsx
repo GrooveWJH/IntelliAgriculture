@@ -55,6 +55,11 @@ const SliderContainer = styled.div`
   margin: 8px 0 30px;
   position: relative;
   
+  /* 移除所有动画效果，确保滑块和轨道同步移动 */
+  .ant-slider, .ant-slider-rail, .ant-slider-track, .ant-slider-handle {
+    transition: none !important;
+  }
+  
   .ant-slider-rail {
     height: 8px;
     background-color: #f0f0f0;
@@ -62,7 +67,6 @@ const SliderContainer = styled.div`
   }
   
   .ant-slider-track {
-    transition: width 0.5s ease-in-out;
     height: 8px;
     background-color: #1890ff;
     border-radius: 4px;
@@ -70,7 +74,6 @@ const SliderContainer = styled.div`
   }
   
   .ant-slider-handle {
-    transition: left 0.5s ease-in-out;
     width: 16px;
     height: 16px;
     margin-top: -4px;
@@ -90,7 +93,7 @@ const SliderContainer = styled.div`
     font-size: 12px;
     font-weight: bold;
     transform: translateX(-50%);
-    transition: left 0.5s ease-in-out;
+    transition: none !important; /* 移除标签动画延迟 */
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     z-index: 1;
     white-space: nowrap;

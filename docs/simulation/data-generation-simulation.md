@@ -14,6 +14,7 @@
   - [4.2.2 天气数据服务](#422-天气数据服务)
   - [4.2.3 大棚物理特性模型](#423-大棚物理特性模型)
   - [4.2.4 控制系统效果模型](#424-控制系统效果模型)
+  - [4.2.5 历史状态维护机制](#425-历史状态维护机制)
 - [4.3 物理模型与计算方法](#43-物理模型与计算方法)
   - [4.3.1 温度计算模型](#431-温度计算模型)
   - [4.3.2 湿度计算模型](#432-湿度计算模型)
@@ -115,6 +116,7 @@ export const defaultWaveConfig: SensorWaveConfig = {
 3. **控制反馈缺失**：控制系统的操作对环境参数的影响体现不充分
 4. **外部因素忽略**：没有考虑外部天气等因素对温室环境的影响
 5. **物理规律缺失**：未遵循热力学、流体力学等基本物理规律
+6. **历史状态缺失**：每次计算都是独立的，不考虑系统的历史状态和连续性
 
 ## 4.2 基于天气数据驱动的环境模拟
 
@@ -144,6 +146,7 @@ graph TD
 3. **控制系统反馈**：将控制系统操作作为模型输入，模拟其对环境的实际影响
 4. **参数耦合关系**：考虑不同环境参数之间的相互影响和制约关系
 5. **物理规律约束**：模型遵循基本物理规律，如热平衡、湿度平衡等
+6. **历史状态保持**：考虑系统的历史状态，确保参数变化的连续性和平滑性
 
 ### 4.2.2 天气数据服务
 
@@ -210,34 +213,102 @@ interface ControlEffects {
 }
 ```
 
+### 4.2.5 历史状态维护机制
+
+系统新增了历史状态维护机制，确保环境参数变化的平滑性和连续性：
+
+```typescript
+// 全局状态变量，存储上一时刻的环境参数
+let previousIndoorTemperature: number | null = null;
+let previousIndoorHumidity: number | null = null;
+let previousCO2Level: number | null = null;
+
+// 计算环境参数变化率
+interface EnvironmentChanges {
+  temperatureChangeRate: number;  // 温度变化率 (℃/分钟)
+  humidityChangeRate: number;     // 湿度变化率 (%/分钟)
+  co2ChangeRate: number;          // CO2浓度变化率 (ppm/分钟)
+}
+
+// 限制参数变化速率，确保自然过渡
+function limitChangeRate(
+  current: number, 
+  previous: number | null, 
+  maxRate: number, 
+  deltaTime: number
+): number {
+  if (previous === null) return current;
+  
+  // 计算实际变化量
+  const change = current - previous;
+  
+  // 计算最大允许变化量（基于时间间隔和最大变化率）
+  const maxChange = maxRate * (deltaTime / 60000); // 转换为每分钟
+  
+  // 限制变化量在允许范围内
+  const limitedChange = Math.max(-maxChange, Math.min(maxChange, change));
+  
+  // 返回限制后的值
+  return previous + limitedChange;
+}
+```
+
 ## 4.3 物理模型与计算方法
 
 ### 4.3.1 温度计算模型
 
-室内温度计算考虑多个因素：
+室内温度计算考虑多个因素，并引入温度历史状态平滑处理：
 
-$$T_{indoor} = T_{outdoor} + \Delta T_{insulation} + \Delta T_{heating} - \Delta T_{cooling} - \Delta T_{ventilation} + \Delta T_{solar}$$
-
-其中：
-- $\Delta T_{insulation}$ 是保温效果导致的温差
-- $\Delta T_{heating}$ 是加热系统贡献的温度增加
-- $\Delta T_{cooling}$ 是制冷系统导致的温度降低
-- $\Delta T_{ventilation}$ 是通风系统导致的温度变化
-- $\Delta T_{solar}$ 是太阳辐射导致的温度增加
-
-太阳辐射影响计算：
-
-$$\Delta T_{solar} = S \cdot (1 - C) \cdot L \cdot \sin(\frac{\pi \cdot (h - 6)}{12})$$
-
-其中：
-- $S$ 是太阳辐射强度系数
-- $C$ 是云量 (0-1)
-- $L$ 是光线透过率
-- $h$ 是当前小时 (0-23)
+```typescript
+// 温度计算
+const calculateIndoorTemperature = (weatherData, controlEffects, previousTemp, deltaTime) => {
+  // 使用上一时刻温度作为基础
+  let indoorTemp = previousTemp !== null ? previousTemp : weatherData.temperature;
+  
+  // 计算热量变化率 (dT/dt)
+  let deltaT = 0;
+  
+  // 1. 热传递 - 室内外温差导致的热传递
+  deltaT += (weatherData.temperature - indoorTemp) * (1 - greenhouseProps.thermalInsulation) * 0.02;
+  
+  // 2. 加热系统影响
+  deltaT += controlEffects.heating * 0.05 * (deltaTime / 60000);
+  
+  // 3. 制冷系统影响
+  deltaT -= controlEffects.cooling * 0.07 * (deltaTime / 60000);
+  
+  // 4. 通风系统影响（当室外温度低于室内时制冷，反之加热）
+  if (controlEffects.ventilation > 0) {
+    const ventEffect = (weatherData.temperature - indoorTemp) * 
+                      (controlEffects.ventilation / 100) * 0.03 * (deltaTime / 60000);
+    deltaT += ventEffect;
+  }
+  
+  // 5. 太阳辐射影响
+  const hour = new Date().getHours();
+  const isDay = hour >= 6 && hour <= 18;
+  if (isDay) {
+    const solarEffect = (1 - weatherData.cloudCover) * 
+                        greenhouseProps.lightTransmission * 
+                        Math.sin((hour - 6) * Math.PI / 12) * 0.1 * (deltaTime / 60000);
+    deltaT += solarEffect;
+  }
+  
+  // 更新温度，应用变化率
+  indoorTemp += deltaT;
+  
+  // 限制变化率，确保平滑过渡
+  if (previousTemp !== null) {
+    indoorTemp = limitChangeRate(indoorTemp, previousTemp, 0.3, deltaTime); // 最大变化率0.3℃/分钟
+  }
+  
+  return indoorTemp;
+};
+```
 
 ### 4.3.2 湿度计算模型
 
-室内湿度考虑以下因素：
+室内湿度考虑以下因素，同样引入历史状态维护：
 
 $$H_{indoor} = H_{outdoor} + \Delta H_{tightness} + \Delta H_{humidification} - \Delta H_{dehumidification} - \Delta H_{ventilation} - \Delta H_{temp}$$
 
@@ -299,89 +370,110 @@ $$L_{artificial} = P_{lighting} \cdot L_{coefficient}$$
 
 ### 4.3.5 环境模拟实现示例
 
-以下是环境模拟的核心实现函数示例：
+以下是改进后的环境模拟核心实现函数示例，体现了历史状态维护和平滑变化：
 
 ```typescript
 /**
- * 基于天气数据计算大棚内环境
+ * 基于天气数据计算大棚内环境，支持历史状态维护和平滑变化
  * @param weatherData 天气数据
+ * @param controlEffects 控制系统效果
  * @returns 大棚内环境参数
  */
 export const calculateIndoorEnvironment = (weatherData: WeatherData, controlEffects: ControlEffects) => {
   const { temperature, humidity, cloudCover, precipitation, windSpeed } = weatherData;
-  const { thermalInsulation, lightTransmission, airTightness } = greenhouseProps;
+  const { thermalInsulation, lightTransmission, airTightness, volume } = greenhouseProps; // 添加 volume
   
   // 温度计算，考虑保温性和控制系统
-  let indoorTemp = temperature;
+  // 使用上一时刻的室内温度作为基础（如果存在），否则使用室外温度
+  let indoorTemp = previousIndoorTemperature !== null ? previousIndoorTemperature : temperature;
   
-  // 基础温差（室内比室外温暖）
-  const baseInsulation = 3 * thermalInsulation;
-  indoorTemp += baseInsulation;
+  // 热量变化率 (dT/dt)
+  let deltaT = 0;
   
-  // 控制系统影响
-  indoorTemp += (controlEffects.heating * 0.1) - (controlEffects.cooling * 0.15) - 
-               (controlEffects.ventilation * windSpeed * 0.03);
+  // 计算模拟间隔时间（毫秒）
+  const deltaTime = 3000; // 假设模拟周期为3秒
   
-  // 阳光效应（晴天增加温度）
-  const solarEffect = (1 - cloudCover) * 5 * lightTransmission;
+  // 热传递 - 室内外温差导致的热传递
+  deltaT += (temperature - indoorTemp) * (1 - thermalInsulation) * 0.02;
+  
+  // 计算控制系统的温度影响
+  const heatingEffect = controlEffects.heating * 0.05 * (deltaTime / 60000);
+  const coolingEffect = controlEffects.cooling * 0.07 * (deltaTime / 60000);
+  
+  // 加热和制冷系统影响
+  deltaT += heatingEffect - coolingEffect;
+  
+  // 通风系统影响
+  if (controlEffects.ventilation > 0) {
+    // 通风导致室内温度向室外温度靠近的速率与通风功率和室内外温差成正比
+    const ventEffect = (temperature - indoorTemp) * 
+                       (controlEffects.ventilation / 100) * 0.1 * (deltaTime / 60000);
+    deltaT += ventEffect;
+  }
   
   // 计算当前小时的太阳高度影响
-  const hour = dayjs().hour();
+  const hour = new Date().getHours();
   const isDay = hour >= 6 && hour <= 18;
   if (isDay) {
     // 太阳高度影响（中午最强）
     const solarHeight = Math.sin((hour - 6) * Math.PI / 12);
-    indoorTemp += solarEffect * solarHeight;
+    const solarEffect = (1 - cloudCover) * lightTransmission * 5 * solarHeight * (deltaTime / 60000);
+    deltaT += solarEffect;
   }
   
+  // 应用热量变化率
+  indoorTemp += deltaT;
+  
+  // 限制温度变化率，确保平滑变化
+  if (previousIndoorTemperature !== null) {
+    indoorTemp = limitChangeRate(indoorTemp, previousIndoorTemperature, 0.3, deltaTime); // 最大0.3℃/分钟
+  }
+  
+  // 存储当前温度以供下次计算使用
+  previousIndoorTemperature = indoorTemp;
+  
   // 湿度计算，考虑密封性和控制系统
-  let indoorHumidity = humidity;
+  let indoorHumidity = previousIndoorHumidity !== null ? previousIndoorHumidity : humidity;
+  
+  // 湿度变化率
+  let deltaH = 0;
+  
+  // 室内外湿度差导致的水分交换
+  deltaH += (humidity - indoorHumidity) * (1 - airTightness) * 0.03;
   
   // 雨天湿度影响
   if (precipitation > 0) {
-    indoorHumidity += (1 - airTightness) * 10;
+    deltaH += precipitation * (1 - airTightness) * 0.5;
   }
   
   // 控制系统影响
-  indoorHumidity += (controlEffects.humidification * 0.3) - 
-                   (controlEffects.dehumidification * 0.3) - 
-                   (controlEffects.ventilation * 0.1);
+  deltaH += (controlEffects.humidification * 0.3 - controlEffects.dehumidification * 0.3) * (deltaTime / 60000);
+  
+  // 通风系统对湿度的影响
+  if (controlEffects.ventilation > 0) {
+    const ventHumidityEffect = (humidity - indoorHumidity) * 
+                              (controlEffects.ventilation / 100) * 0.2 * (deltaTime / 60000);
+    deltaH += ventHumidityEffect;
+  }
   
   // 温度对湿度的反向影响（温度高时湿度降低）
-  indoorHumidity -= (indoorTemp - temperature) * 0.5;
+  deltaH -= (indoorTemp - temperature) * 0.5 * (deltaTime / 60000);
+  
+  // 应用湿度变化率
+  indoorHumidity += deltaH;
+  
+  // 限制湿度变化率，确保平滑变化
+  if (previousIndoorHumidity !== null) {
+    indoorHumidity = limitChangeRate(indoorHumidity, previousIndoorHumidity, 1.0, deltaTime); // 最大1%/分钟
+  }
   
   // 确保湿度在合理范围内
   indoorHumidity = Math.max(30, Math.min(100, indoorHumidity));
   
-  // CO2浓度计算
-  let co2Level = 400; // 基础CO2浓度
+  // 存储当前湿度以供下次计算使用
+  previousIndoorHumidity = indoorHumidity;
   
-  // 通风影响（降低CO2）
-  co2Level -= controlEffects.ventilation * 2;
-  
-  // CO2注入系统
-  co2Level += controlEffects.co2Injection * 5;
-  
-  // 植物光合作用消耗CO2
-  const photosynthesis = isDay ? (1 - cloudCover) * lightTransmission * 50 : 0;
-  co2Level -= photosynthesis;
-  
-  // 确保CO2在合理范围内
-  co2Level = Math.max(300, Math.min(2000, co2Level));
-  
-  // 光照强度计算
-  let lightIntensity = 0;
-  if (isDay) {
-    // 自然光照（受云量影响）
-    const naturalLight = 2000 * (1 - cloudCover) * lightTransmission * 
-                        Math.sin((hour - 6) * Math.PI / 12);
-    // 补光系统
-    const artificialLight = controlEffects.lighting * 25;
-    lightIntensity = naturalLight + artificialLight;
-  } else {
-    // 夜间只有补光系统
-    lightIntensity = controlEffects.lighting * 25;
-  }
+  // 其他环境参数计算（CO2浓度、光照等）类似添加历史状态维护...
   
   // 返回计算的大棚环境参数
   return {
@@ -407,6 +499,9 @@ export const calculateIndoorEnvironment = (weatherData: WeatherData, controlEffe
 |参数间关联性|低|高|
 |外部天气影响|无|有|
 |控制系统反馈|弱|强|
+|历史状态维护|无|有|
+|参数变化平滑性|弱|强|
+|交互响应自然度|低|高|
 |适用场景|原型和演示|实际生产环境|
 
 ### 4.4.2 天气数据驱动模型的核心优势
@@ -426,12 +521,22 @@ export const calculateIndoorEnvironment = (weatherData: WeatherData, controlEffe
    - 不同控制策略的效果差异可以准确体现
    - 更真实地模拟控制系统对环境的调节过程
 
-4. **场景适应性与扩展性**
+4. **历史状态维护与平滑变化**
+   - 环境参数变化考虑历史状态，确保连续性
+   - 参数变化有物理约束的最大变化率，避免突变
+   - 更真实地反映大棚环境的热惯性和状态延续性
+
+5. **改进的用户体验**
+   - 控制系统操作与环境响应更加自然流畅
+   - 滑块等交互组件的操作直观反映在环境参数上
+   - 用户能够更好地理解控制操作与环境变化的关系
+
+6. **场景适应性与扩展性**
    - 通过调整大棚物理参数，可以模拟不同类型的大棚
    - 支持不同气候条件下的环境模拟
    - 便于测试控制算法在各种条件下的表现
 
-5. **提高系统训练与验证价值**
+7. **提高系统训练与验证价值**
    - 为控制算法优化提供更真实的测试环境
    - 可用于模拟极端天气条件下的系统响应
    - 增强用户对系统行为的预期理解
@@ -444,4 +549,5 @@ export const calculateIndoorEnvironment = (weatherData: WeatherData, controlEffe
 2. **操作人员培训**：模拟各种环境条件，训练操作人员应对不同情况
 3. **控制参数优化**：在模拟环境中调整控制参数，找到最优配置
 4. **资源消耗评估**：评估不同天气条件下的能源和资源消耗
-5. **极端情况预演**：模拟极端天气条件，测试系统应对能力 
+5. **极端情况预演**：模拟极端天气条件，测试系统应对能力
+6. **UI交互优化**：验证用户界面元素（如滑块控制）的自然反馈效果 

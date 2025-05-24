@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Card, 
   Form, 
@@ -83,6 +83,11 @@ const ThresholdCard = styled(Card)<{ isActive: boolean }>`
 const ThresholdSlider = styled(Slider)`
   margin: 16px 8px 8px;
   
+  /* 移除所有动画效果，确保滑块和轨道同步移动 */
+  &, .ant-slider-rail, .ant-slider-track, .ant-slider-handle {
+    transition: none !important;
+  }
+  
   .ant-slider-rail {
     background-color: #f0f0f0;
     height: 8px;
@@ -107,6 +112,20 @@ const ThresholdSlider = styled(Slider)`
   .ant-slider-handle::before,
   .ant-slider-handle::after {
     display: none;
+  }
+  
+  /* 确保禁用状态的样式正确 */
+  &.ant-slider-disabled {
+    .ant-slider-rail {
+      background-color: #f5f5f5;
+    }
+    .ant-slider-track {
+      background-color: #e1e1e1;
+    }
+    .ant-slider-handle {
+      border-color: #d9d9d9;
+      background-color: #fff;
+    }
   }
 `;
 
@@ -257,9 +276,20 @@ const AlarmSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('1');
   const [currentForm, setCurrentForm] = useState<any>(null);
   
+  // 初始化时设置currentForm为form的初始值
+  useEffect(() => {
+    const initialValues = form.getFieldsValue(true);
+    setCurrentForm({...initialValues});
+    
+    // 调试输出
+    console.log('初始化表单值:', initialValues);
+  }, []);
+  
   // 当表单值改变时更新状态
   const handleValuesChange = (changedValues: any, allValues: any) => {
-    setCurrentForm(allValues);
+    // 调试输出
+    console.log('表单值变化:', changedValues, '所有值:', allValues);
+    setCurrentForm({...allValues});
   };
 
   const handleSave = async (values: any) => {
@@ -287,11 +317,12 @@ const AlarmSettings: React.FC = () => {
                 const newMethods = selectedMethods.includes(method.key)
                   ? selectedMethods.filter((key: string) => key !== method.key)
                   : [...selectedMethods, method.key];
+                
                 form.setFieldsValue({ notificationMethod: newMethods });
-                setCurrentForm({
-                  ...currentForm,
-                  notificationMethod: newMethods
-                });
+                
+                // 强制立即更新表单状态
+                const newValues = form.getFieldsValue(true);
+                setCurrentForm({...newValues});
               }}
             >
               {method.icon}
@@ -319,14 +350,17 @@ const AlarmSettings: React.FC = () => {
   // 渲染参数阈值设置卡片
   const renderThresholdCard = (paramKey: keyof typeof parameterConfig, values: any) => {
     const param = parameterConfig[paramKey];
-    const globalEnabled = values?.enabled; // 获取全局启用状态
-    const isEnabled = values?.thresholds?.[paramKey]?.enabled;
+    // 确保正确获取全局和参数启用状态
+    const globalEnabled = values?.enabled === true; 
+    const isEnabled = values?.thresholds?.[paramKey]?.enabled === true;
     const minValue = values?.thresholds?.[paramKey]?.min || param.criticalMin;
     const maxValue = values?.thresholds?.[paramKey]?.max || param.criticalMax;
     const delay = values?.thresholds?.[paramKey]?.delay || 30;
     
     // 组件是否应该被禁用：当全局禁用或当前参数禁用时
     const isDisabled = !globalEnabled || !isEnabled;
+    
+    console.log(`${paramKey} - globalEnabled: ${globalEnabled}, isEnabled: ${isEnabled}, isDisabled: ${isDisabled}`);
     
     return (
       <ThresholdCard 
@@ -339,25 +373,20 @@ const AlarmSettings: React.FC = () => {
               checked={isEnabled}
               disabled={!globalEnabled} // 全局禁用时，单个开关也禁用
               onChange={checked => {
+                const newThresholds = {
+                  ...values?.thresholds,
+                  [paramKey]: {
+                    ...values?.thresholds?.[paramKey],
+                    enabled: checked
+                  }
+                };
                 form.setFieldsValue({
-                  thresholds: {
-                    ...values?.thresholds,
-                    [paramKey]: {
-                      ...values?.thresholds?.[paramKey],
-                      enabled: checked
-                    }
-                  }
+                  thresholds: newThresholds
                 });
-                setCurrentForm({
-                  ...currentForm,
-                  thresholds: {
-                    ...currentForm?.thresholds,
-                    [paramKey]: {
-                      ...currentForm?.thresholds?.[paramKey],
-                      enabled: checked
-                    }
-                  }
-                });
+                
+                // 强制立即更新表单状态
+                const newValues = form.getFieldsValue(true);
+                setCurrentForm({...newValues}); 
               }}
               checkedChildren="启用"
               unCheckedChildren="禁用"
@@ -368,91 +397,80 @@ const AlarmSettings: React.FC = () => {
           </ParameterLabel>
         }
       >
-        <Form.Item shouldUpdate noStyle>
-          {() => (
-            <>
-              <Paragraph type="secondary">{param.description}</Paragraph>
-              
-              <Row align="middle" style={{ padding: '0 16px' }}>
-                <Col span={4}>
-                  <Badge color="red" text={`最小值: ${minValue}${param.unit}`} />
-                </Col>
-                <Col span={16}>
-                  <ThresholdSlider
-                    range
-                    disabled={isDisabled} // 使用综合禁用状态
-                    min={param.min}
-                    max={param.max}
-                    value={[minValue, maxValue]}
-                    onChange={(value: number[]) => {
-                      form.setFieldsValue({
-                        thresholds: {
-                          ...values?.thresholds,
-                          [paramKey]: {
-                            ...values?.thresholds?.[paramKey],
-                            min: value[0],
-                            max: value[1]
-                          }
-                        }
-                      });
-                      setCurrentForm({
-                        ...currentForm,
-                        thresholds: {
-                          ...currentForm?.thresholds,
-                          [paramKey]: {
-                            ...currentForm?.thresholds?.[paramKey],
-                            min: value[0],
-                            max: value[1]
-                          }
-                        }
-                      });
-                    }}
-                  />
-                </Col>
-                <Col span={4} style={{ textAlign: 'right' }}>
-                  <Badge color="green" text={`最大值: ${maxValue}${param.unit}`} />
-                </Col>
-              </Row>
-              
-              <Row align="middle" style={{ marginTop: 16 }}>
-                <Col span={14} offset={2}>
-                  <Text type="secondary">超出阈值延迟报警时间:</Text>
-                </Col>
-                <Col span={8}>
-                  <InputNumber
-                    disabled={isDisabled} // 使用综合禁用状态
-                    min={0}
-                    max={300}
-                    value={delay}
-                    onChange={value => {
-                      form.setFieldsValue({
-                        thresholds: {
-                          ...values?.thresholds,
-                          [paramKey]: {
-                            ...values?.thresholds?.[paramKey],
-                            delay: value
-                          }
-                        }
-                      });
-                      setCurrentForm({
-                        ...currentForm,
-                        thresholds: {
-                          ...currentForm?.thresholds,
-                          [paramKey]: {
-                            ...currentForm?.thresholds?.[paramKey],
-                            delay: value
-                          }
-                        }
-                      });
-                    }}
-                    addonAfter="秒"
-                    style={{ width: '100%' }}
-                  />
-                </Col>
-              </Row>
-            </>
-          )}
-        </Form.Item>
+        <Paragraph type="secondary">{param.description}</Paragraph>
+        
+        <Row align="middle" style={{ padding: '0 16px' }}>
+          <Col span={4}>
+            <Badge color="red" text={`最小值: ${minValue}${param.unit}`} />
+          </Col>
+          <Col span={16}>
+            <ThresholdSlider
+              range
+              disabled={isDisabled}
+              min={param.min}
+              max={param.max}
+              value={[minValue, maxValue]}
+              onChange={(value: number[]) => {
+                if (isDisabled) return; // 再次确认禁用状态
+                
+                const newThresholds = {
+                  ...values?.thresholds,
+                  [paramKey]: {
+                    ...values?.thresholds?.[paramKey],
+                    min: value[0],
+                    max: value[1]
+                  }
+                };
+                
+                form.setFieldsValue({
+                  thresholds: newThresholds
+                });
+                
+                // 强制立即更新表单状态
+                const newValues = form.getFieldsValue(true);
+                setCurrentForm({...newValues});
+              }}
+            />
+          </Col>
+          <Col span={4} style={{ textAlign: 'right' }}>
+            <Badge color="green" text={`最大值: ${maxValue}${param.unit}`} />
+          </Col>
+        </Row>
+        
+        <Row align="middle" style={{ marginTop: 16 }}>
+          <Col span={14} offset={2}>
+            <Text type="secondary">超出阈值延迟报警时间:</Text>
+          </Col>
+          <Col span={8}>
+            <InputNumber
+              disabled={isDisabled}
+              min={0}
+              max={300}
+              value={delay}
+              onChange={value => {
+                if (isDisabled) return; // 再次确认禁用状态
+                
+                const newThresholds = {
+                  ...values?.thresholds,
+                  [paramKey]: {
+                    ...values?.thresholds?.[paramKey],
+                    delay: value
+                  }
+                };
+                
+                form.setFieldsValue({
+                  thresholds: newThresholds
+                });
+                
+                // 强制立即更新表单状态
+                const newValues = form.getFieldsValue(true);
+                setCurrentForm({...newValues});
+              }}
+              addonAfter="秒"
+              style={{ width: '100%' }}
+            />
+          </Col>
+        </Row>
       </ThresholdCard>
     );
   };
@@ -556,9 +574,12 @@ const AlarmSettings: React.FC = () => {
             <Select mode="multiple" />
           </Form.Item>
 
-          <Form.Item shouldUpdate noStyle>
-            {({ getFieldsValue }) => renderNotificationMethods(getFieldsValue())}
-                </Form.Item>
+          <Form.Item shouldUpdate>
+            {({ getFieldsValue }) => {
+              const values = getFieldsValue(true);
+              return renderNotificationMethods(values);
+            }}
+          </Form.Item>
         </StyledCard>
         
         <Tabs activeKey={activeTab} onChange={setActiveTab}>
@@ -573,48 +594,55 @@ const AlarmSettings: React.FC = () => {
           >
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item shouldUpdate noStyle>
-                  {({ getFieldsValue }) => 
-                    renderThresholdCard('temperature', getFieldsValue())
-                  }
-          </Form.Item>
+                <Form.Item shouldUpdate>
+                  {({ getFieldsValue }) => {
+                    const values = getFieldsValue(true);
+                    return renderThresholdCard('temperature', values);
+                  }}
+                </Form.Item>
 
-          <Form.Item shouldUpdate noStyle>
-                  {({ getFieldsValue }) => 
-                    renderThresholdCard('humidity', getFieldsValue())
-                  }
+                <Form.Item shouldUpdate>
+                  {({ getFieldsValue }) => {
+                    const values = getFieldsValue(true);
+                    return renderThresholdCard('humidity', values);
+                  }}
                 </Form.Item>
                 
-                <Form.Item shouldUpdate noStyle>
-                  {({ getFieldsValue }) => 
-                    renderThresholdCard('co2', getFieldsValue())
-                  }
-          </Form.Item>
+                <Form.Item shouldUpdate>
+                  {({ getFieldsValue }) => {
+                    const values = getFieldsValue(true);
+                    return renderThresholdCard('co2', values);
+                  }}
+                </Form.Item>
 
-          <Form.Item shouldUpdate noStyle>
-                  {({ getFieldsValue }) => 
-                    renderThresholdCard('light', getFieldsValue())
-                  }
+                <Form.Item shouldUpdate>
+                  {({ getFieldsValue }) => {
+                    const values = getFieldsValue(true);
+                    return renderThresholdCard('light', values);
+                  }}
                 </Form.Item>
               </Col>
               
               <Col span={12}>
-          <Form.Item shouldUpdate noStyle>
-                  {({ getFieldsValue }) => 
-                    renderThresholdCard('soilMoisture', getFieldsValue())
-                  }
-          </Form.Item>
+                <Form.Item shouldUpdate>
+                   {({ getFieldsValue }) => {
+                     const values = getFieldsValue(true);
+                     return renderThresholdCard('soilMoisture', values);
+                   }}
+                  </Form.Item>
 
-          <Form.Item shouldUpdate noStyle>
-                  {({ getFieldsValue }) => 
-                    renderThresholdCard('soilPH', getFieldsValue())
-                  }
-          </Form.Item>
+                 <Form.Item shouldUpdate>
+                   {({ getFieldsValue }) => {
+                     const values = getFieldsValue(true);
+                     return renderThresholdCard('soilPH', values);
+                   }}
+                  </Form.Item>
 
-          <Form.Item shouldUpdate noStyle>
-                  {({ getFieldsValue }) => 
-                    renderThresholdCard('ec', getFieldsValue())
-                  }
+                 <Form.Item shouldUpdate>
+                   {({ getFieldsValue }) => {
+                     const values = getFieldsValue(true);
+                     return renderThresholdCard('ec', values);
+                   }}
                 </Form.Item>
               </Col>
             </Row>

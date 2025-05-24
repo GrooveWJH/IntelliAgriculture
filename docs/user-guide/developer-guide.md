@@ -161,6 +161,142 @@ export const NewComponent: React.FC<NewComponentProps> = ({
 };
 ```
 
+### 2.4 滑块交互优化
+
+系统对所有滑块组件进行了交互优化，主要通过以下方法实现：
+
+```typescript
+// 优化后的滑块组件
+const OptimizedSlider = styled(Slider)`
+  // 移除所有动画效果，确保滑块和轨道同步移动
+  &, .ant-slider-rail, .ant-slider-track, .ant-slider-handle {
+    transition: none !important;
+  }
+  
+  .ant-slider-rail {
+    background-color: #f0f0f0;
+    height: 8px;
+  }
+  
+  .ant-slider-track {
+    background-color: #91d5ff;
+    height: 8px;
+  }
+  
+  .ant-slider-handle {
+    width: 16px;
+    height: 16px;
+    margin-top: -4px;
+    background-color: white;
+    border: 2px solid #1890ff;
+    box-shadow: none;
+    outline: none;
+  }
+`;
+
+// 在组件中使用优化后的滑块
+const SliderControl: React.FC<SliderControlProps> = ({ 
+  value, 
+  onChange, 
+  disabled 
+}) => {
+  return (
+    <OptimizedSlider
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      min={0}
+      max={100}
+      // 也可以通过样式属性直接禁用过渡效果
+      styles={{
+        track: { transition: 'none' },
+        rail: { transition: 'none' },
+        handle: { transition: 'none' }
+      }}
+    />
+  );
+};
+```
+
+### 2.5 环境模拟引擎
+
+环境模拟是系统的重要组成部分，最新版本支持两种模拟模式：
+
+- `src/services/environmentSimulation.ts` - 环境模拟引擎核心代码
+
+模拟引擎的主要特性：
+
+1. **传统波形模式** - 基于三角函数生成环境参数
+2. **天气驱动模式** - 基于物理模型和天气数据的高精度模拟
+
+扩展环境模拟引擎：
+
+```typescript
+// 1. 在environmentSimulation.ts中添加新的物理模型计算
+export interface PhysicalModel {
+  calculateTemperature: (data: WeatherData, previous: number | null, effects: ControlEffects) => number;
+  calculateHumidity: (data: WeatherData, previous: number | null, temperature: number, effects: ControlEffects) => number;
+  calculateCO2: (data: WeatherData, previous: number | null, effects: ControlEffects) => number;
+  // 添加新的计算函数
+  calculateNewParameter: (data: WeatherData, previous: number | null, effects: ControlEffects) => number;
+}
+
+// 2. 实现新参数的计算逻辑
+const calculateNewParameter = (
+  weatherData: WeatherData, 
+  previousValue: number | null,
+  controlEffects: ControlEffects,
+  deltaTime: number = 3000 // 默认3秒更新间隔
+): number => {
+  // 使用上一时刻的值作为基础
+  let currentValue = previousValue !== null ? previousValue : DEFAULT_VALUE;
+  
+  // 计算变化率
+  let deltaValue = 0;
+  
+  // 添加各种影响因素的计算
+  // 1. 外部环境影响
+  deltaValue += (weatherData.externalFactor - currentValue) * INFLUENCE_FACTOR;
+  
+  // 2. 控制系统影响
+  deltaValue += controlEffects.relevantSystem * CONTROL_EFFECT_FACTOR * (deltaTime / 60000);
+  
+  // 应用变化率
+  currentValue += deltaValue;
+  
+  // 限制变化率，确保平滑变化
+  if (previousValue !== null) {
+    currentValue = limitChangeRate(currentValue, previousValue, MAX_CHANGE_RATE, deltaTime);
+  }
+  
+  // 确保值在合理范围内
+  return Math.max(MIN_VALUE, Math.min(MAX_VALUE, currentValue));
+};
+
+// 3. 在主模拟函数中集成新参数的计算
+export const calculateIndoorEnvironment = (weatherData: WeatherData, controlEffects: ControlEffects) => {
+  // 现有参数计算
+  const indoorTemp = calculateTemperature(weatherData, previousIndoorTemperature, controlEffects);
+  previousIndoorTemperature = indoorTemp;
+  
+  const indoorHumidity = calculateHumidity(weatherData, previousIndoorHumidity, indoorTemp, controlEffects);
+  previousIndoorHumidity = indoorHumidity;
+  
+  // 新参数计算
+  const newParamValue = calculateNewParameter(weatherData, previousNewParamValue, controlEffects);
+  previousNewParamValue = newParamValue;
+  
+  // 返回更新后的环境数据
+  return {
+    timestamp: Date.now(),
+    airTemperature: Number(indoorTemp.toFixed(2)),
+    airHumidity: Number(indoorHumidity.toFixed(2)),
+    // 添加新参数
+    newParameter: Number(newParamValue.toFixed(2))
+  };
+};
+```
+
 ## 3. 扩展功能开发指南
 
 ### 3.1 添加新的数据分析功能
@@ -250,57 +386,117 @@ useEffect(() => {
 }, [useExternalData]);
 ```
 
-### 3.3 添加新的警报处理
+### 3.3 增强报警系统
 
-增强系统的警报处理功能：
+系统的报警功能已增强，支持以下特性：
+
+- **分级报警** - 环境参数与系统异常分开处理
+- **参数级开关** - 每个参数都有独立的报警开关
+- **延迟报警** - 超出阈值一定时间后才触发报警
+- **多通知方式** - 支持界面、声音、邮件等多种通知方式
+
+开发者可以通过以下方式扩展报警系统：
 
 ```typescript
-// src/services/AlertService.ts
-export function checkAlerts(
+// src/models/AlarmTypes.ts
+// 定义报警阈值接口
+export interface ParameterThreshold {
+  enabled: boolean;       // 是否启用报警
+  min: number;            // 最小阈值
+  max: number;            // 最大阈值
+  delay: number;          // 超出阈值延迟时间(秒)
+  lastViolationTime?: number; // 上次违反阈值的时间
+}
+
+export interface AlarmSettings {
+  enabled: boolean;                           // 系统总开关
+  thresholds: Record<string, ParameterThreshold>; // 各参数阈值
+  notificationMethod: string[];               // 通知方式
+}
+
+// src/services/AlarmService.ts
+// 报警检测实现
+export function checkAlarms(
   sensorData: SensorData,
-  thresholds: WarningThresholds
+  alarmSettings: AlarmSettings
 ): Alert[] {
+  if (!alarmSettings.enabled) return []; // 总开关未启用
+  
+  const now = Date.now();
   const alerts: Alert[] = [];
+  const thresholds = alarmSettings.thresholds;
   
-  // 检查各个参数是否超过阈值
-  if (sensorData.airTemperature > thresholds.temperature) {
-    alerts.push({
-      type: 'temperature',
-      level: 'warning',
-      message: `温度过高: ${sensorData.airTemperature}℃`,
-      timestamp: sensorData.timestamp
-    });
-  }
-  
-  // 添加新的警报逻辑
-  if (sensorData.newSensorType > thresholds.newSensorType) {
-    alerts.push({
-      type: 'newSensorType',
-      level: 'warning',
-      message: `新传感器值过高: ${sensorData.newSensorType}`,
-      timestamp: sensorData.timestamp
-    });
-  }
+  // 遍历所有需要监控的参数
+  Object.keys(thresholds).forEach(param => {
+    const threshold = thresholds[param];
+    if (!threshold.enabled) return; // 参数报警未启用
+    
+    const value = sensorData[param as keyof SensorData] as number;
+    if (!value) return; // 参数不存在
+    
+    const isOutOfRange = value < threshold.min || value > threshold.max;
+    
+    if (isOutOfRange) {
+      // 记录首次违反阈值的时间
+      if (!threshold.lastViolationTime) {
+        threshold.lastViolationTime = now;
+      }
+      
+      // 计算已违反阈值的时间(秒)
+      const violationDuration = (now - threshold.lastViolationTime) / 1000;
+      
+      // 仅当超过延迟时间才触发报警
+      if (violationDuration >= threshold.delay) {
+        alerts.push({
+          id: generateId(),
+          parameterName: param,
+          value: value,
+          threshold: value < threshold.min ? threshold.min : threshold.max,
+          type: value < threshold.min ? 'low' : 'high',
+          timestamp: now,
+          acknowledged: false
+        });
+      }
+    } else {
+      // 恢复正常，重置违反阈值时间
+      threshold.lastViolationTime = undefined;
+    }
+  });
   
   return alerts;
 }
 
-// 在contexts中使用
+// 在AlarmContext中使用
 useEffect(() => {
-  if (sensorData) {
-    const newAlerts = checkAlerts(sensorData, warningThresholds);
+  if (sensorData && alarmSettings) {
+    const newAlerts = checkAlarms(sensorData, alarmSettings);
+    
     if (newAlerts.length > 0) {
       setAlerts(prev => [...newAlerts, ...prev].slice(0, 100));
-      // 处理通知逻辑
+      
+      // 根据配置的通知方式处理报警
       newAlerts.forEach(alert => {
-        notification.warning({
-          message: '系统警报',
-          description: alert.message
-        });
+        // UI通知
+        if (alarmSettings.notificationMethod.includes('ui')) {
+          notification.warning({
+            message: '系统警报',
+            description: getAlertDescription(alert)
+          });
+        }
+        
+        // 声音通知
+        if (alarmSettings.notificationMethod.includes('sound')) {
+          playAlertSound(alert.type);
+        }
+        
+        // 邮件通知
+        if (alarmSettings.notificationMethod.includes('email')) {
+          sendEmailAlert(alert);
+        }
       });
     }
   }
-}, [sensorData, warningThresholds]);
+}, [sensorData, alarmSettings]);
 ```
 
 ## 4. 测试与调试
@@ -338,7 +534,77 @@ describe('Control Models', () => {
 });
 ```
 
-### 4.2 UI测试
+### 4.2 环境模拟引擎测试
+
+针对改进的环境模拟引擎，添加专门的测试用例：
+
+```typescript
+// src/services/__tests__/environmentSimulation.test.ts
+import { 
+  calculateIndoorEnvironment, 
+  calculateTemperature,
+  limitChangeRate
+} from '../environmentSimulation';
+
+describe('Environment Simulation', () => {
+  test('Temperature should change smoothly without sudden jumps', () => {
+    const weatherData = {
+      temperature: 25,
+      humidity: 60,
+      cloudCover: 0.2,
+      precipitation: 0,
+      windSpeed: 2
+    };
+    
+    const controlEffects = {
+      heating: 80, // 高功率加热
+      cooling: 0,
+      ventilation: 0,
+      humidification: 0,
+      dehumidification: 0,
+      lighting: 0,
+      irrigation: 0,
+      co2Injection: 0
+    };
+    
+    // 先进行一次计算，获取初始状态
+    const firstResult = calculateIndoorEnvironment(weatherData, controlEffects);
+    
+    // 急剧改变外部温度
+    weatherData.temperature = 10; // 室外温度骤降
+    
+    // 继续计算几个周期
+    let results = [firstResult];
+    for (let i = 0; i < 10; i++) {
+      const newResult = calculateIndoorEnvironment(weatherData, controlEffects);
+      results.push(newResult);
+    }
+    
+    // 检查温度变化率
+    for (let i = 1; i < results.length; i++) {
+      const tempChange = Math.abs(results[i].airTemperature - results[i-1].airTemperature);
+      // 温度变化不应超过每周期0.3℃
+      expect(tempChange).toBeLessThanOrEqual(0.3);
+    }
+  });
+  
+  test('limitChangeRate should correctly limit parameter change', () => {
+    // 测试变化率限制函数
+    const previous = 25;
+    const current = 30;  // 5度变化
+    const maxRate = 0.3; // 每分钟最大0.3度
+    const deltaTime = 3000; // 3秒
+    
+    // 预期最大变化: 0.3 * (3000/60000) = 0.015度
+    const limited = limitChangeRate(current, previous, maxRate, deltaTime);
+    
+    // 结果应该是: 25 + 0.015 = 25.015
+    expect(limited).toBeCloseTo(25.015, 3);
+  });
+});
+```
+
+### 4.3 UI测试
 
 对于核心UI功能，添加组件测试：
 
@@ -373,7 +639,7 @@ describe('ControlCard', () => {
 });
 ```
 
-### 4.3 调试技巧
+### 4.4 调试技巧
 
 开发时可以使用以下技巧进行调试：
 
@@ -498,10 +764,7 @@ function OptimizedChart({ data }) {
   useEffect(() => {
     if (canvasRef.current && data) {
       const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        // 直接使用Canvas API绘制图表
-        // 这比使用高级图表库渲染大量数据点更高效
-      }
+      // 绘制图表逻辑
     }
   }, [data]);
   
@@ -509,206 +772,31 @@ function OptimizedChart({ data }) {
 }
 ```
 
-## 6. 代码风格与最佳实践
+## 6. 最佳实践与规范
 
-### 6.1 TypeScript类型定义
+### 6.1 编码规范
 
-```typescript
-// 定义清晰的接口而不是使用any
-interface SensorData {
-  timestamp: number;
-  airTemperature: number;
-  airHumidity: number;
-  // 其他传感器数据
-}
+项目使用 ESLint 和 Prettier 确保代码质量和风格一致性：
 
-// 使用联合类型表示有限的可能值
-type AlertLevel = 'info' | 'warning' | 'critical';
+- 使用 TypeScript 类型系统确保类型安全
+- 遵循功能组件和 React Hooks 的最佳实践
+- 使用有意义的命名约定
+- 添加必要的注释和文档
 
-// 使用泛型增强可复用性
-function getLatestData<T extends { timestamp: number }>(data: T[]): T | null {
-  if (data.length === 0) return null;
-  return data.reduce((latest, item) => 
-    item.timestamp > latest.timestamp ? item : latest
-  );
-}
-```
+### 6.2 性能考虑
 
-### 6.2 代码注释规范
+- 避免不必要的重渲染
+- 优化大数据处理
+- 使用适当的缓存策略
+- 监控内存使用情况
 
-```typescript
-/**
- * 计算系统需要的功率百分比
- * 
- * @param system - 控制系统配置
- * @param sensorData - 当前传感器数据
- * @returns 计算出的功率百分比(0-100)
- * 
- * @example
- * const power = calculateSystemPower(ventilationSystem, currentData);
- * // power = 45 表示风扇应该运行在45%功率
- */
-function calculateSystemPower(
-  system: ControlSystem,
-  sensorData: SensorData
-): number {
-  // 实现逻辑...
-}
-```
+### 6.3 用户体验最佳实践
 
-### 6.3 文件组织
+- 确保UI响应迅速，无明显延迟
+- 提供明确的错误处理和用户反馈
+- 确保交互元素（如滑块）的操作流畅直观
+- 优先考虑可访问性和易用性
 
-```
-// 相关功能应该放在一起
-src/features/environmental-control/
-├── components/                 // 特定于此功能的组件
-│   ├── ControlPanel.tsx 
-│   └── SystemCard.tsx
-├── hooks/                      // 特定于此功能的自定义hooks
-│   └── useSystemControl.ts
-├── services/                   // 业务逻辑
-│   └── controlAlgorithms.ts
-└── index.tsx                   // 导出公共API
-```
+---
 
-### 6.4 错误处理
-
-```typescript
-// 全局错误边界
-class ErrorBoundary extends React.Component {
-  state = { hasError: false, error: null };
-  
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-  
-  componentDidCatch(error, errorInfo) {
-    // 记录错误到监控服务
-    logErrorToService(error, errorInfo);
-  }
-  
-  render() {
-    if (this.state.hasError) {
-      return <ErrorDisplay error={this.state.error} />;
-    }
-    return this.props.children;
-  }
-}
-
-// 使用try-catch处理异步操作
-async function fetchData() {
-  try {
-    const response = await fetch('/api/data');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return await response.json();
-  } catch (err) {
-    console.error('Failed to fetch data:', err);
-    // 显示用户友好的错误消息
-    notification.error({
-      message: '数据加载失败',
-      description: '无法加载传感器数据，请稍后再试'
-    });
-    // 返回默认数据或重新抛出错误
-    return defaultData;
-  }
-}
-```
-
-## 7. 部署与维护
-
-### 7.1 构建优化
-
-```
-// package.json
-{
-  "scripts": {
-    "build": "react-scripts build",
-    "build:analyze": "source-map-explorer 'build/static/js/*.js'",
-    "postbuild": "gzip -9 -r build/static"
-  }
-}
-```
-
-### 7.2 环境配置
-
-```typescript
-// src/config/environment.ts
-const env = process.env.NODE_ENV || 'development';
-
-// 根据环境配置不同参数
-export const CONFIG = {
-  development: {
-    updateInterval: 1000,
-    useMockData: true,
-    apiBaseUrl: 'http://localhost:3001/api'
-  },
-  production: {
-    updateInterval: 5000,
-    useMockData: false,
-    apiBaseUrl: 'https://api.example.com'
-  }
-}[env];
-```
-
-### 7.3 版本控制与发布
-
-```
-// 版本命名约定
-// 主版本.次版本.补丁版本
-// 例如: 1.2.3
-
-// package.json
-{
-  "version": "1.2.3",
-  "scripts": {
-    "version:patch": "npm version patch && git push && git push --tags",
-    "version:minor": "npm version minor && git push && git push --tags",
-    "version:major": "npm version major && git push && git push --tags"
-  }
-}
-```
-
-## 8. 常见问题解决
-
-### 8.1 性能问题
-
-**问题**：大量数据导致UI卡顿
-
-**解决方案**：
-
-1. 实现数据分页或虚拟滚动
-2. 减少重渲染（使用React.memo, useMemo等）
-3. 使用Web Worker处理大量计算
-4. 优化渲染策略（按需渲染、懒加载）
-
-### 8.2 状态管理问题
-
-**问题**：组件间状态同步困难
-
-**解决方案**：
-
-1. 使用React Context API管理全局状态
-2. 考虑使用Redux或MobX等状态管理库
-3. 使用组合组件而不是深层嵌套
-4. 实现自定义Hooks简化状态逻辑
-
-### 8.3 数据一致性问题
-
-**问题**：实时数据与历史数据不一致
-
-**解决方案**：
-
-1. 实现单一数据源原则
-2. 使用乐观更新策略
-3. 实现数据版本控制
-4. 添加数据验证和错误处理
-
-## 9. 扩展阅读资源
-
-- [React官方文档](https://reactjs.org/docs/getting-started.html)
-- [TypeScript手册](https://www.typescriptlang.org/docs/)
-- [Ant Design组件库](https://ant.design/components/overview/)
-- [ECharts文档](https://echarts.apache.org/en/index.html)
-- [React性能优化](https://reactjs.org/docs/optimizing-performance.html)
+*版权所有 © 2024 IntelliAgriculture. 保留所有权利。*

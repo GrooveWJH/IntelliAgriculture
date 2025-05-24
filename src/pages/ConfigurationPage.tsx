@@ -94,6 +94,11 @@ const ParamFormItem: React.FC<ParamFormItemProps> = ({
             step={step}
             value={value}
             onChange={handleChange}
+            styles={{
+              track: { transition: 'none' },
+              rail: { transition: 'none' },
+              handle: { transition: 'none' }
+            }}
           />
         </Col>
         <Col span={7} offset={1}>

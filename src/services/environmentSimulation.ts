@@ -80,6 +80,7 @@ let lastWeatherChange = Date.now();
 let greenhouseProps = { ...defaultGreenhouseProps };
 let controlEffects = { ...defaultControlEffects };
 let weatherDataDriven = true; // 是否使用天气数据驱动
+let previousIndoorTemperature: number | null = null; //  新增：存储上一时刻的室内温度
 
 // 更新控制系统效果
 export const setControlEffects = (effects: Partial<ControlEffects>): void => {
@@ -167,29 +168,49 @@ export const getWeatherData = async (): Promise<WeatherData> => {
  */
 export const calculateIndoorEnvironment = (weatherData: WeatherData, controlEffects: ControlEffects) => {
   const { temperature, humidity, cloudCover, precipitation, windSpeed } = weatherData;
-  const { thermalInsulation, lightTransmission, airTightness } = greenhouseProps;
+  const { thermalInsulation, lightTransmission, airTightness, volume } = greenhouseProps;
   
   // 温度计算，考虑保温性和控制系统
-  let indoorTemp = temperature;
+  // 使用上一时刻的室内温度作为基础（如果存在），否则使用室外温度
+  let indoorTemp = previousIndoorTemperature !== null ? previousIndoorTemperature : temperature;
   
-  // 基础温差（室内比室外温暖）
-  const baseInsulation = 3 * thermalInsulation;
-  indoorTemp += baseInsulation;
+  // 热量变化率 (dT/dt)
+  let deltaT = 0;
+
+  // 1. 与室外的热交换 (受保温性和温差影响)
+  const heatLossToOutside = (indoorTemp - temperature) * (1 - thermalInsulation) * 0.1; // 调整系数
+  deltaT -= heatLossToOutside;
+
+  // 2. 控制系统影响
+  // 加热器功率转换为温度上升速率 (假设每10%功率增加0.02 °C/min，可调整)
+  deltaT += (controlEffects.heating / 100) * 0.5; // 调整加热效果
+  // 制冷器功率转换为温度下降速率
+  deltaT -= (controlEffects.cooling / 100) * 0.6; // 调整制冷效果
+  // 通风系统影响 (引入空气交换率，受风速和通风功率影响)
+  const airExchangeRate = (controlEffects.ventilation / 100) * (windSpeed / 10) * 0.2; // 调整通风效果
+  deltaT -= (indoorTemp - temperature) * airExchangeRate;
   
-  // 控制系统影响
-  indoorTemp += (controlEffects.heating * 0.1) - (controlEffects.cooling * 0.15) - (controlEffects.ventilation * windSpeed * 0.03);
+  // 3. 阳光效应（晴天增加温度）
+  const solarRadiationFactor = 5; // 太阳辐射基础因子
+  const solarEffect = (1 - cloudCover) * solarRadiationFactor * lightTransmission;
   
-  // 阳光效应（晴天增加温度）
-  const solarEffect = (1 - cloudCover) * 5 * lightTransmission;
-  
-  // 计算当前小时的太阳高度影响
   const hour = dayjs().hour();
   const isDay = hour >= 6 && hour <= 18;
   if (isDay) {
-    // 太阳高度影响（中午最强）
-    const solarHeight = Math.sin((hour - 6) * Math.PI / 12);
-    indoorTemp += solarEffect * solarHeight;
+    const solarHeightFactor = Math.sin(Math.max(0, (hour - 6)) * Math.PI / 12); // 确保只在白天有正值
+    deltaT += solarEffect * solarHeightFactor * 0.1; // 调整太阳辐射效果
   }
+
+  // 更新室内温度 (假设更新间隔为3秒，即0.05分钟)
+  // dT = (P_in - P_out) / (mass * specific_heat) 
+  // 简化：直接调整温度，deltaT 代表单位时间内的温度变化量
+  // 这里的更新逻辑可以更复杂，例如考虑大棚的热容量等
+  // 简化的模拟，我们将 deltaT 视为一个调整速率
+  indoorTemp += deltaT * 0.5; // 调整此系数以控制温度变化速度
+
+  // 防止温度极端化，确保在一个合理范围内
+  indoorTemp = Math.max(temperature -10, Math.min(temperature + 25, indoorTemp)); // 室内温度不会比室外低10度或高25度以上（极端情况）
+  previousIndoorTemperature = indoorTemp; // 更新上一时刻的室内温度
   
   // 湿度计算，考虑密封性和控制系统
   let indoorHumidity = humidity;
@@ -228,23 +249,29 @@ export const calculateIndoorEnvironment = (weatherData: WeatherData, controlEffe
   let lightIntensity = 0;
   if (isDay) {
     // 自然光照（受云量影响）
-    const naturalLight = defaultParams.baseLightIntensity * (1 - cloudCover) * lightTransmission * Math.sin((hour - 6) * Math.PI / 12);
+    const naturalLightBase = 80000; // 晴天中午最大光照强度 (lux)
+    const naturalLight = naturalLightBase * (1 - cloudCover) * lightTransmission * Math.sin(Math.max(0,(hour - 6)) * Math.PI / 12);
     // 补光系统
-    const artificialLight = controlEffects.lighting * 25;
+    const artificialLight = controlEffects.lighting * 250; // 每1%功率增加250 lux
     lightIntensity = naturalLight + artificialLight;
   } else {
     // 夜间只有补光系统
-    lightIntensity = controlEffects.lighting * 25;
+    lightIntensity = controlEffects.lighting * 250;
   }
+  lightIntensity = Math.max(0, lightIntensity); // 确保光照不为负
   
   // 土壤相关参数
-  const soilTemp = indoorTemp * 0.7 + temperature * 0.3;
+  const soilTempFactor = 0.05; // 土壤温度变化速率因子
+  let currentSoilTemp = previousIndoorTemperature !== null ? previousIndoorTemperature * 0.8 : temperature; // 初始化土壤温度
+  currentSoilTemp = currentSoilTemp + (indoorTemp - currentSoilTemp) * soilTempFactor; // 土壤温度缓慢跟随空气温度
   
   // 土壤湿度，受灌溉系统影响
-  let soilMoisture = defaultParams.baseHumidity;
-  soilMoisture += controlEffects.irrigation * 0.3;
-  soilMoisture += precipitation * 0.5 * (1 - airTightness);
-  soilMoisture = Math.max(50, Math.min(95, soilMoisture));
+  let soilMoisture = defaultParams.baseHumidity; // 基础值可以调整
+  soilMoisture += (controlEffects.irrigation / 100) * 20; // 每1%功率增加0.2%湿度，最大增加20%
+  soilMoisture += precipitation * 0.5 * (1 - airTightness); // 降雨影响
+  // 蒸发影响，简化处理
+  soilMoisture -= (indoorTemp / 30) * 0.5; // 温度越高，蒸发越快
+  soilMoisture = Math.max(20, Math.min(95, soilMoisture));
   
   // 返回计算的大棚环境参数
   return {
@@ -253,7 +280,7 @@ export const calculateIndoorEnvironment = (weatherData: WeatherData, controlEffe
     airHumidity: Number(indoorHumidity.toFixed(2)),
     co2Level: Number(co2Level.toFixed(2)),
     lightIntensity: Number(lightIntensity.toFixed(2)),
-    soilTemperature: Number(soilTemp.toFixed(2)),
+    soilTemperature: Number(currentSoilTemp.toFixed(2)), // 使用更新后的土壤温度
     soilMoisture: Number(soilMoisture.toFixed(2)),
     soilPH: 6.5 + (Math.random() - 0.5) * 0.1,
     ec: 1.2 + (Math.random() - 0.5) * 0.1,
@@ -294,46 +321,70 @@ export const simulateEnvironment = async () => {
 const simulateTraditional = () => {
   const now = dayjs();
   const hour = now.hour() + now.minute() / 60;
-  const weather = updateWeather();
-  
-  // 温度日变化：基础温度 + 日变化幅度 + 天气影响
-  const temperature = 
+  const weather = updateWeather(); //  获取模拟天气状况
+  const isDay = hour >= 6 && hour <= 18;
+
+  // 温度日变化：基础温度 + 日变化幅度 + 天气影响 + 控制系统影响
+  let temperature = 
     defaultParams.baseTemperature + 
     defaultParams.temperatureAmplitude * Math.sin((hour - 6) * Math.PI / 12) +
     weather.temperature;
   
-  // 湿度：基础湿度 + 天气影响 - 温度影响
-  const humidity = 
+  temperature += (controlEffects.heating / 100) * 5; // 加热效果，每1%功率增加0.05度 (可调)
+  temperature -= (controlEffects.cooling / 100) * 6; // 制冷效果
+  temperature -= (controlEffects.ventilation / 100) * (temperature - (defaultParams.baseTemperature - 5)) * 0.1; // 通风降温，温度越高于室外基准降温越快
+  
+  // 湿度：基础湿度 + 天气影响 - 温度影响 + 控制系统影响
+  let humidity = 
     defaultParams.baseHumidity + 
     weather.humidity - 
     (temperature - defaultParams.baseTemperature) * 0.5;
   
-  // CO2浓度：基础浓度 + 光合作用影响
-  const co2 = 
-    defaultParams.baseCO2 + 
-    defaultParams.co2Variation * Math.sin((hour - 12) * Math.PI / 12);
+  humidity += (controlEffects.humidification / 100) * 15; // 加湿效果
+  humidity -= (controlEffects.dehumidification / 100) * 15; // 除湿效果
+  humidity -= (controlEffects.ventilation / 100) * 5; // 通风除湿
+
+  humidity = Math.min(100, Math.max(20, humidity)); // 湿度范围
   
-  // 光照强度：考虑时间和云量
-  const lightIntensity = 
-    hour >= 6 && hour <= 18
-      ? defaultParams.baseLightIntensity * 
-        (1 - weather.cloudCover) * 
-        Math.sin((hour - 6) * Math.PI / 12)
-      : 0;
+  // CO2浓度：基础浓度 + 光合作用影响 + 控制系统影响
+  let co2 = 
+    defaultParams.baseCO2 + 
+    defaultParams.co2Variation * Math.sin((hour - 12) * Math.PI / 12); // 自然波动
+  
+  if(isDay) {
+    co2 -= defaultParams.co2Variation * 0.5 * (1-weather.cloudCover); // 白天植物消耗
+  } else {
+    co2 += defaultParams.co2Variation * 0.2; // 夜间植物呼吸释放少量
+  }
+  co2 += (controlEffects.co2Injection / 100) * 200; // CO2注入效果
+  co2 -= (controlEffects.ventilation / 100) * 100; // 通风降低CO2
+  co2 = Math.max(300, Math.min(1500, co2)); // CO2范围
+
+  // 光照强度：考虑时间和云量 + 控制系统影响
+  let lightIntensity = 0;
+  if (isDay) {
+    lightIntensity = defaultParams.baseLightIntensity * 
+                     (1 - weather.cloudCover) * 
+                     Math.sin(Math.max(0,(hour - 6)) * Math.PI / 12);
+  }
+  lightIntensity += (controlEffects.lighting / 100) * 50000; // 补光灯效果，每1%功率增加500 lux (可调)
+  lightIntensity = Math.max(0, lightIntensity);
   
   // 土壤相关参数变化较慢
-  const soilTemperature = temperature * 0.8 + defaultParams.baseTemperature * 0.2;
-  const soilMoisture = Math.min(
-    85,
-    defaultParams.baseHumidity + weather.precipitation * 2
-  );
-  const soilPH = 6.5 + (Math.random() - 0.5) * 0.1;
-  const ec = 1.2 + (Math.random() - 0.5) * 0.1;
+  const soilTemperature = temperature * 0.8 + defaultParams.baseTemperature * 0.2; // 简单跟随空气温度
+  let soilMoisture = defaultParams.baseHumidity * 0.8; // 土壤湿度基础值
+  soilMoisture += (controlEffects.irrigation / 100) * 15; // 灌溉效果
+  soilMoisture += weather.precipitation * 1; // 降雨少量增加土壤湿度
+  soilMoisture -= (temperature / 30) * 0.3; // 高温蒸发
+  soilMoisture = Math.min(90, Math.max(30, soilMoisture)); // 土壤湿度范围
+
+  const soilPH = 6.5 + (Math.random() - 0.5) * 0.1; // 随机pH
+  const ec = 1.2 + (Math.random() - 0.5) * 0.1;    // 随机EC
   
   return {
     timestamp: Date.now(),
     airTemperature: Number(temperature.toFixed(2)),
-    airHumidity: Number(Math.min(100, Math.max(0, humidity)).toFixed(2)),
+    airHumidity: Number(humidity.toFixed(2)),
     soilMoisture: Number(soilMoisture.toFixed(2)),
     soilTemperature: Number(soilTemperature.toFixed(2)),
     co2Level: Number(co2.toFixed(2)),
@@ -341,10 +392,10 @@ const simulateTraditional = () => {
     soilPH: Number(soilPH.toFixed(2)),
     ec: Number(ec.toFixed(2)),
     weather: weather.type,
-    outdoorTemperature: Number((temperature - 3).toFixed(2)),
-    outdoorHumidity: Number(Math.min(100, Math.max(0, humidity - 5)).toFixed(2)),
+    outdoorTemperature: Number((weather.temperature + defaultParams.baseTemperature - 3).toFixed(2)), // 模拟一个室外温度
+    outdoorHumidity: Number(Math.min(100, Math.max(0, weather.humidity + defaultParams.baseHumidity - 5)).toFixed(2)), // 模拟室外湿度
     precipitation: weather.precipitation,
-    windSpeed: Math.random() * 5 + 1,
-    description: `模拟${weather.type}`
+    windSpeed: Math.random() * 5 + 1, // 随机风速
+    description: `传统模拟 - ${weather.type}`
   };
 }; 
