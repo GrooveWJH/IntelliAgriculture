@@ -1,0 +1,34 @@
+flowchart TD
+    subgraph 数据源
+        Sensors[传感器/模拟数据]
+    end
+  
+    subgraph 内存缓存
+        MemCache[Map<number, SensorData>]
+    end
+  
+    subgraph IndexedDB
+        SensorDB[(SensorData存储)]
+        WarningDB[(WarningLog存储)]
+        SettingsDB[(SystemSettings存储)]
+    end
+  
+    subgraph 应用逻辑
+        DataContext[SensorDataContext]
+        ControlSystem[控制系统]
+        UI[用户界面]
+    end
+  
+    Sensors --> |生成数据| DataContext
+    DataContext --> |存储| MemCache
+    DataContext --> |持久化| SensorDB
+    MemCache --> |查询| DataContext
+    MemCache --> |清理策略| MemCache
+    SensorDB --> |历史查询| DataContext
+  
+    DataContext --> |分析| ControlSystem
+    ControlSystem --> |生成警告| WarningDB
+    ControlSystem --> |读取配置| SettingsDB
+    UI --> |更新配置| SettingsDB
+    UI --> |显示数据| DataContext
+    UI --> |控制系统| ControlSystem 

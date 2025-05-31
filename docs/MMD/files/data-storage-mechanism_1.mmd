@@ -1,0 +1,13 @@
+flowchart TD
+    subgraph MemoryCache["内存缓存层"]
+        A[TimeSeriesStorage] --> |实时数据| B[高速缓存]
+        A --> |降采样| C[时序数据]
+    end
+    
+    subgraph PersistentStorage["持久化存储层"]
+        D[IndexedDB] --> |传感器数据| E[SensorData存储]
+        D --> |报警日志| F[WarningLog存储]
+    end
+    
+    A --> D
+    B --> C 

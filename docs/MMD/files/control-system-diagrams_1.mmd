@@ -1,0 +1,33 @@
+graph TD
+    subgraph 控制系统架构
+        CF[控制器工厂]
+        PID[PID控制器]
+        FC[模糊控制器]
+        SC[Smith预测控制器]
+        
+        VS[通风子系统]
+        HS[加湿子系统]
+        LS[补光子系统]
+        IS[灌溉子系统]
+        CS[CO2子系统]
+        SS[遮阳子系统]
+        
+        PC[参数配置]
+    end
+    
+    CF --> PID
+    CF --> FC
+    CF --> SC
+    
+    PID --> LS
+    PID --> CS
+    PID --> SS
+    
+    FC --> HS
+    FC --> IS
+    
+    SC --> VS
+    
+    PC --> PID
+    PC --> FC
+    PC --> SC 

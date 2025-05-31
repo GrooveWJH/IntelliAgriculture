@@ -1,0 +1,13 @@
+graph TD
+    Start[开始] --> Age{数据年龄?}
+    Age -->|1分钟内| A[每秒存储]
+    Age -->|1小时内| B[每分钟存储]
+    Age -->|1天内| C[每30分钟存储]
+    Age -->|1月内| D[每小时存储]
+    Age -->|更早| E[自动清理]
+    
+    A --> Store[存储数据]
+    B --> Store
+    C --> Store
+    D --> Store
+    E --> Discard[丢弃数据] 

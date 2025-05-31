@@ -1,0 +1,20 @@
+erDiagram
+    SENSORDATA {
+        number timestamp PK
+        number airTemperature
+        number airHumidity
+        number soilMoisture
+        number soilTemperature
+        number co2Level
+        number lightIntensity
+        number soilPH
+        number ec
+    }
+    
+    WARNINGLOG {
+        number timestamp PK
+        string parameter
+        number value
+        string message
+        string level
+    } 

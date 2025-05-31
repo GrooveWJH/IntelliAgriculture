@@ -1,0 +1,54 @@
+classDiagram
+    class SensorData {
+        +number timestamp
+        +number airTemperature
+        +number airHumidity
+        +number soilMoisture
+        +number soilTemperature
+        +number co2Level
+        +number lightIntensity
+        +number soilPH
+        +number ec
+    }
+    
+    class WarningLog {
+        +number timestamp
+        +string parameter
+        +number value
+        +string message
+        +string level
+    }
+    
+    class SystemSettings {
+        +string id
+        +EnvironmentConfig environmentConfig
+        +ControlModelConfig controlModelConfig
+        +StorageConfig storageConfig
+        +number lastUpdated
+    }
+    
+    class ControlSystem {
+        +string id
+        +string name
+        +string description
+        +string[] effects
+        +boolean isAuto
+        +number currentPower
+        +string targetParameter
+        +number warningThreshold
+        +calculateOutput(SensorData) SystemOutput
+    }
+    
+    class ParameterConfig {
+        +number min
+        +number max
+        +number target
+        +number warningThreshold
+        +number criticalThreshold
+    }
+    
+    SensorData -- ControlSystem : 输入 >
+    ControlSystem -- SystemOutput : 生成 >
+    SystemSettings -- ControlSystem : 配置 >
+    SensorData -- WarningLog : 触发 >
+    ParameterConfig --* SystemSettings : 组成 > 

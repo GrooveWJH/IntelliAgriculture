@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant S as 传感器/模拟器
+    participant C as 控制系统
+    participant A as 执行设备
+    participant E as 环境模拟引擎
+    
+    loop 控制周期
+        S->>C: 环境参数数据
+        C->>C: 计算控制决策
+        C->>A: 发送控制命令
+        A->>E: 控制效果输入
+        E->>S: 更新环境参数
+    end 

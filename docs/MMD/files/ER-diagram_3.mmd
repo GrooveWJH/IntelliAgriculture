@@ -1,0 +1,15 @@
+graph TD
+    Input[数据输入] --> Age{数据年龄?}
+    Age -->|实时数据| FullRes[完整存储]
+    Age -->|最近1小时| Min1[每分钟采样]
+    Age -->|最近1天| Min30[每30分钟采样]
+    Age -->|最近1月| Hour1[每小时采样]
+  
+    FullRes --> Store[IndexedDB存储]
+    Min1 --> Store
+    Min30 --> Store
+    Hour1 --> Store
+  
+    Store --> Size{存储大小>阈值?}
+    Size -->|是| Clean[清理旧数据]
+    Size -->|否| Done[完成] 

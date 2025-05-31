@@ -61,3 +61,7 @@ logs/
 .parcel-cache/
 .eslintcache
 .yarn-integrity
+
+
+*.pdf
+*.docx

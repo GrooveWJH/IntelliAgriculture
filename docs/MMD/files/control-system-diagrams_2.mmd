@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant S as 传感器数据
+    participant P as PID控制器
+    participant A as 执行器
+    
+    S->>P: 提供当前值
+    Note over P: 计算误差 = 目标值 - 当前值
+    Note over P: 计算积分项 += 误差 * dt
+    Note over P: 计算微分项 = (误差 - 上次误差) / dt
+    Note over P: 输出 = Kp * 误差 + Ki * 积分项 + Kd * 微分项
+    P->>A: 功率输出(0-100%)
+    A->>S: 影响环境参数 

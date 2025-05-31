@@ -1,0 +1,30 @@
+graph TD
+    subgraph 环境参数
+        Temp[空气温度]
+        Humid[空气湿度]
+        Soil[土壤湿度]
+        Light[光照强度]
+        CO2[CO2浓度]
+    end
+    
+    subgraph 控制系统
+        Vent[通风系统]
+        Humidifier[加湿系统]
+        Lighting[补光系统]
+        Irrigation[灌溉系统]
+        CO2Sys[CO2系统]
+        Shading[遮阳系统]
+    end
+    
+    Temp -->|过高| Vent
+    Temp -->|稳定| Vent
+    
+    Humid -->|过低| Humidifier
+    Humid -->|过高| Vent
+    
+    Soil -->|过低| Irrigation
+    
+    Light -->|过低| Lighting
+    Light -->|过高| Shading
+    
+    CO2 -->|过低| CO2Sys 

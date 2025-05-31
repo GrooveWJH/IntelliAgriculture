@@ -1,0 +1,18 @@
+graph TD
+    subgraph 数据流
+        Sensor[传感器数据] --> Processing[数据处理]
+        Processing --> Analysis[分析决策]
+        Analysis --> Control[控制执行]
+        Control --> Environment[环境变化]
+        Environment --> Sensor
+    end
+    
+    subgraph 协同控制
+        Vent[通风]
+        Humid[加湿]
+        Light[补光]
+        Shade[遮阳]
+        
+        Vent <-->|温度湿度协调| Humid
+        Light <-->|光照协调| Shade
+    end 

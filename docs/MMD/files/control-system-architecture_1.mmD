@@ -1,0 +1,40 @@
+flowchart TD
+    subgraph ControllerFactory["控制器工厂"]
+        Factory[ControllerFactory] -- 创建 --> PID[PID控制器]
+        Factory -- 创建 --> Fuzzy[模糊控制器]
+        Factory -- 创建 --> Smith[Smith预测控制器]
+    end
+    
+    subgraph ControlAlgorithms["控制算法"]
+        PID --> PIDControl[PID控制逻辑]
+        Fuzzy --> FuzzyControl[模糊控制逻辑]
+        Smith --> SmithControl[Smith预测控制逻辑]
+    end
+    
+    subgraph SubsystemControl["子系统控制"]
+        EnvironmentControl[EnvironmentControlService] --> Ventilation[通风系统]
+        EnvironmentControl --> Humidification[加湿系统]
+        EnvironmentControl --> Lighting[补光系统]
+        EnvironmentControl --> Irrigation[灌溉系统]
+        EnvironmentControl --> CO2[CO2系统]
+        EnvironmentControl --> Shading[遮阳系统]
+    end
+    
+    subgraph ParameterConfig["参数配置"]
+        ConfigService[ConfigService] --> PIDParams[PID参数]
+        ConfigService --> FuzzyRules[模糊规则集]
+        ConfigService --> SmithParams[Smith预测参数]
+        ConfigService --> TargetValues[目标值配置]
+    end
+    
+    PID --> Ventilation
+    Fuzzy --> Humidification
+    PID --> Lighting
+    Fuzzy --> Irrigation
+    PID --> CO2
+    Smith --> Shading
+    
+    PIDParams --> PID
+    FuzzyRules --> Fuzzy
+    SmithParams --> Smith
+    TargetValues --> EnvironmentControl 

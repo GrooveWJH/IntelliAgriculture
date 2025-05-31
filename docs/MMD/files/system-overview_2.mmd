@@ -1,0 +1,39 @@
+flowchart TD
+    subgraph "表现层"
+        UI1[实时监控界面]
+        UI2[环境控制界面]
+        UI3[数据分析界面]
+        UI4[系统设置界面]
+        UI5[报警设置界面]
+    end
+  
+    subgraph "业务逻辑层"
+        BL1[传感器数据处理]
+        BL2[控制系统逻辑]
+        BL3[数据分析引擎]
+        BL4[配置管理]
+        BL5[报警逻辑]
+        BL6[环境模拟引擎]
+    end
+  
+    subgraph "数据层"
+        DL1[内存缓存]
+        DL2[IndexedDB存储]
+        DL3[LocalStorage配置]
+    end
+  
+    UI1 --> BL1
+    UI2 --> BL2
+    UI3 --> BL3
+    UI4 --> BL4
+    UI5 --> BL5
+  
+    BL1 --> DL1
+    BL2 --> DL1
+    BL3 --> DL2
+    BL4 --> DL3
+    BL5 --> DL1
+    BL5 --> DL2
+    BL6 --> BL1
+  
+    DL1 --> DL2 
